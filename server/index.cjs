@@ -99,6 +99,27 @@ async function phonepeStatus(merchantTransactionId){
   return {ok:res.ok, data};
 }
 
+async function phonepeRefund(merchantTransactionId, amount){
+  const path = '/pg/v1/refund';
+  const payload = {
+    merchantId: MERCHANT_ID,
+    merchantTransactionId,
+    amount: Math.round(Number(amount)*100)
+  };
+  const json = JSON.stringify(payload);
+  const base64 = Buffer.from(json).toString('base64');
+  const headers = {
+    'Content-Type':'application/json',
+    'X-VERIFY': xVerify(base64 + path + SALT_KEY),
+    'X-MERCHANT-ID': MERCHANT_ID
+  };
+  const auth = await getAuthToken();
+  if(auth) headers['Authorization'] = `O-Bearer ${auth}`;
+  const res = await fetch(`${BASE}${path}`,{method:'POST',headers,body:JSON.stringify({request:base64})});
+  const data = await res.json();
+  return {ok:res.ok, data};
+}
+
 const payments = new Map();
 const orders = [];
 const orderClients = new Set();
@@ -197,6 +218,27 @@ app.post('/api/admin/set-availability', requireAdmin, (req,res)=>{
   overrides.availability[id] = !!available;
   saveOverrides(overrides);
   res.json({ok:true});
+});
+
+app.post('/api/admin/refund', requireAdmin, async (req,res)=>{
+  try{
+    const { orderId, amount } = req.body||{};
+    if(!orderId || amount==null) return res.status(400).json({error:'invalid-refund-request'});
+    const pay = payments.get(orderId);
+    if(!pay || String(pay.status)!=='SUCCESS'){
+      return res.status(400).json({error:'payment-not-verified'});
+    }
+    if(!MERCHANT_ID || !SALT_KEY){
+      return res.status(501).json({error:'refund-not-configured'});
+    }
+    const resp = await phonepeRefund(orderId, amount);
+    if(!resp.ok){
+      return res.status(500).json({error:'phonepe-refund-failed', details:resp.data});
+    }
+    return res.json({ok:true, details:resp.data});
+  }catch(e){
+    return res.status(500).json({error:'server-error', message:String(e)});
+  }
 });
 
 app.post('/api/admin/add-item', requireAdmin, (req,res)=>{

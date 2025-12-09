@@ -86,6 +86,20 @@ export default function Admin(){
     }catch{ setMsg('Network error'); }
   }
 
+  async function refundOrder(orderId, amount){
+    setMsg("");
+    try{
+      const r=await fetch(`${BACKEND_URL}/api/admin/refund`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},body:JSON.stringify({orderId,amount})});
+      const d=await r.json();
+      if(!r.ok || !d.ok){
+        const err = d && d.error ? d.error : 'refund-failed';
+        setMsg(err==='refund-not-configured' ? 'Refund not configured on server' : 'Refund failed');
+        return;
+      }
+      setMsg('Refund initiated successfully');
+    }catch{ setMsg('Network error'); }
+  }
+
   async function addItem(e){
     e.preventDefault(); setMsg("");
     const id = makeIdFromName(name||'item');
@@ -193,6 +207,7 @@ export default function Admin(){
                 <span className="font-bold">₹{o.total}</span>
                 <span>{o.customer?.name}</span>
                 <span className="text-muted text-xs">{new Date(o.createdAt).toLocaleTimeString()}</span>
+                <button className="px-2 py-1 rounded-md bg-[#2a2a2a] border border-[#3a3a3a]" onClick={()=>refundOrder(o.id, o.total)}>Refund</button>
               </span>
             </li>
           ))}
