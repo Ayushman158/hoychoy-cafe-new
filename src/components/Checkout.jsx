@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import data from "../data/menu.json";
-import { UPI_ID, MERCHANT_NAME, BACKEND_URL } from "../config";
+import { UPI_ID, MERCHANT_NAME, BACKEND_URL, CAFE_LAT, CAFE_LNG } from "../config";
 import { generateOrderId } from "../utils/order";
 import { buildUpiIntent } from "../utils/upi";
 
@@ -45,7 +45,44 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
     try{const u=new URL(s);return /maps\.google\.com|google\.com\/maps/.test(u.hostname+u.pathname);}catch{return false}
   }
 
-  function submit(){onSubmit({name,phone,address,geo,manualLink:manualLink.trim(),total,items});}
+  function parseManualCoords(str){
+    try{
+      const s=str.trim();
+      const m=s.match(/^\s*(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)\s*$/);
+      if(m) return {lat:Number(m[1]),lng:Number(m[2])};
+      const u=new URL(s);
+      const q=u.searchParams.get('q');
+      const mm=q&&q.match(/^\s*(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)\s*$/);
+      if(mm) return {lat:Number(mm[1]),lng:Number(mm[2])};
+      return null;
+    }catch{return null}
+  }
+
+  function haversine(lat1,lon1,lat2,lon2){
+    const toRad=(v)=>v*Math.PI/180;
+    const R=6371;
+    const dLat=toRad(lat2-lat1);
+    const dLon=toRad(lon2-lon1);
+    const a=Math.sin(dLat/2)**2+Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+    const c=2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+    return R*c;
+  }
+
+  function calculateDeliveryFee(){
+    const coord= geo || parseManualCoords(manualLink);
+    if(!coord) return 50;
+    const d=haversine(CAFE_LAT, CAFE_LNG, coord.lat, coord.lng);
+    if(d<=2) return 20;
+    if(d<=5) return 40;
+    if(d<=8) return 60;
+    return 80;
+  }
+
+  const gst = Math.round(total*0.05);
+  const deliveryFee = calculateDeliveryFee();
+  const grandTotal = total + gst + deliveryFee;
+
+  function submit(){onSubmit({name,phone,address,geo,manualLink:manualLink.trim(),total,items,gst,deliveryFee,grandTotal});}
 
   async function payNow(){
     const orderId = `HC-${generateOrderId()}-${Date.now()}`;
@@ -53,7 +90,7 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
     const callbackUrl = `${BACKEND_URL}/api/payment-callback`;
     const resp = await fetch(`${BACKEND_URL}/api/initiate-payment`,{
       method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({amount:total, orderId, customerPhone:phone, customerName:name, redirectUrl, callbackUrl})
+      body:JSON.stringify({amount:grandTotal, orderId, customerPhone:phone, customerName:name, redirectUrl, callbackUrl})
     });
     const data = await resp.json();
     if(!resp.ok || !data.redirectUrl){
@@ -61,7 +98,7 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
       return;
     }
     localStorage.setItem('pp_last_txn', orderId);
-    localStorage.setItem('hc_cust', JSON.stringify({name,phone,address,geo,manualLink:manualLink.trim(),items,total}));
+    localStorage.setItem('hc_cust', JSON.stringify({name,phone,address,geo,manualLink:manualLink.trim(),items,total,gst,deliveryFee,grandTotal}));
     window.location.href = data.redirectUrl;
   }
 
@@ -84,7 +121,10 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
           ))}
         </ul>
         <div className="border-t border-[#222] my-2"/>
-        <div className="row font-bold"><span>Total</span><span className="price">₹{total}</span></div>
+        <div className="row"><span>Subtotal</span><span className="price">₹{total}</span></div>
+        <div className="row"><span>GST (5%)</span><span className="price">₹{gst}</span></div>
+        <div className="row"><span>Delivery Fee</span><span className="price">₹{deliveryFee}</span></div>
+        <div className="row font-bold"><span>Grand Total</span><span className="price">₹{grandTotal}</span></div>
       </div>
 
       <div className="card mt-3">
@@ -111,7 +151,7 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
           <input type="checkbox" className="w-4 h-4" checked={agree} onChange={e=>setAgree(e.target.checked)} />
           <span>I agree to the <a href="/terms" className="text-[#f5c84a] underline">Terms & Conditions</a></span>
         </label>
-        <button className={`btn btn-primary w-full`} onClick={payNow}>Pay ₹{total}</button>
+        <button className={`btn btn-primary w-full`} onClick={payNow}>Pay ₹{grandTotal}</button>
         <div className="text-muted text-xs mt-2">You will be redirected to PhonePe to complete payment.</div>
       </div>
       <div className="mt-4 mb-6">
