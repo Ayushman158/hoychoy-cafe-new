@@ -81,10 +81,15 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
   const gst = Math.round(total*0.05);
   const deliveryFee = calculateDeliveryFee();
   const grandTotal = total + gst + deliveryFee;
+  const canOrder = total >= 200;
 
   function submit(){onSubmit({name,phone,address,geo,manualLink:manualLink.trim(),total,items,gst,deliveryFee,grandTotal});}
 
   async function payNow(){
+    if(!canOrder){
+      alert('Minimum order is ₹200. Please add more items before paying.');
+      return;
+    }
     const orderId = `HC-${generateOrderId()}-${Date.now()}`;
     const redirectUrl = `${window.location.origin}/?merchantTransactionId=${orderId}`;
     const callbackUrl = `${BACKEND_URL}/api/payment-callback`;
@@ -151,6 +156,7 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
           <input type="checkbox" className="w-4 h-4" checked={agree} onChange={e=>setAgree(e.target.checked)} />
           <span>I agree to the <a href="/terms" className="text-[#f5c84a] underline">Terms & Conditions</a></span>
         </label>
+        {!canOrder && <div className="text-error text-xs mb-2">Minimum order is ₹200</div>}
         <button className={`btn btn-primary w-full`} onClick={payNow}>Pay ₹{grandTotal}</button>
         <div className="text-muted text-xs mt-2">You will be redirected to PhonePe to complete payment.</div>
       </div>

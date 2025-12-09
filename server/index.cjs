@@ -222,6 +222,7 @@ app.post('/api/initiate-payment', async (req,res)=>{
   try{
     const { amount, orderId, customerPhone, customerName, redirectUrl, callbackUrl } = req.body;
     if(!amount || !orderId) return res.status(400).json({error:'amount and orderId required'});
+    if(Number(amount) < 200) return res.status(400).json({error:'min-order-amount'});
     const payload = {
       merchantId: MERCHANT_ID,
       merchantTransactionId: orderId,

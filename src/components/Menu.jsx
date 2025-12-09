@@ -112,6 +112,7 @@ const NonVegIcon = () => (
 
   const count=Object.values(cart).reduce((s,x)=>s+x,0);
   const total=items.reduce((s,i)=>s+(cart[i.id]?cart[i.id]*i.price:0),0);
+  const cartTotal=Object.entries(cart).reduce((s,[id,q])=>{const it=(base.items||[]).find(x=>x.id===id);return s+(it?it.price*q:0);},0);
 
   useEffect(()=>{localStorage.setItem("hc_cart",JSON.stringify(cart));},[cart]);
 
@@ -126,6 +127,7 @@ const NonVegIcon = () => (
   function add(id){
   console.log('Adding item to cart:', id);
   console.log('Current cart:', cart);setCart(c=>({...c,[id]:(c[id]||0)+1}));setJustAdded(id);setTimeout(()=>setJustAdded(null),1000);} 
+  function handleProceed(){ if(cartTotal<200) alert('Minimum order is ₹200'); onProceed(); }
 
   return (
     <main className="max-w-[600px] mx-auto px-4 pb-40">
@@ -256,7 +258,7 @@ const NonVegIcon = () => (
 
       <button
         type="button"
-        onClick={onProceed}
+        onClick={handleProceed}
         disabled={appReason==='CLOSED_BY_OWNER'}
         className={`fixed right-3 bottom-32 z-50 rounded-full px-3 py-2 font-bold flex items-center gap-2 shadow-xl ${appReason==='CLOSED_BY_OWNER' ? 'opacity-60 cursor-not-allowed bg-[#333] text-[#999]' : 'bg-primary text-black'}`}
       >
@@ -268,9 +270,10 @@ const NonVegIcon = () => (
       </button>
       <div className="fixed left-0 right-0 bottom-0 bg-gradient-to-b from-black/20 to-bg p-3 border-t border-[#222]">
         <div className="row font-bold">
-          <span>Total</span><span className="price">₹{Object.entries(cart).reduce((s,[id,q])=>{const it=(base.items||[]).find(x=>x.id===id);return s+(it?it.price*q:0);},0)}</span>
+          <span>Total</span><span className="price">₹{cartTotal}</span>
         </div>
-        <button className={`btn w-full mt-2 ${appReason==='CLOSED_BY_OWNER' ? 'btn-disabled' : 'btn-primary'}`} disabled={appReason==='CLOSED_BY_OWNER'} onClick={onProceed}>Proceed to Checkout</button>
+        {cartTotal<200 && <div className="text-error text-xs mt-1">Minimum order is ₹200</div>}
+        <button className={`btn w-full mt-2 ${appReason==='CLOSED_BY_OWNER' ? 'btn-disabled' : 'btn-primary'}`} disabled={appReason==='CLOSED_BY_OWNER'} onClick={handleProceed}>Proceed to Checkout</button>
       </div>
     </main>
   );
