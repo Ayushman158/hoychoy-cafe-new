@@ -1,0 +1,13 @@
+{
+  "categories": ["Appetizers", "Mains", "Sides", "Desserts"],
+  "items": [
+    {"id": "peri_fries", "name": "Peri Peri Fries", "price": 129, "veg": true, "category": "Appetizers", "available": true},
+    {"id": "french_fries", "name": "French Fries", "price": 99, "veg": true, "category": "Appetizers", "available": true},
+    {"id": "paneer_pakora", "name": "Paneer Pakora", "price": 169, "veg": true, "category": "Appetizers", "available": true},
+    {"id": "onion_rings", "name": "Onion Rings", "price": 149, "veg": true, "category": "Appetizers", "available": true},
+    {"id": "chicken_wings", "name": "Chicken Wings", "price": 179, "veg": false, "category": "Appetizers", "available": true},
+    {"id": "grilled_chicken", "name": "Grilled Chicken", "price": 249, "veg": false, "category": "Mains", "available": true},
+    {"id": "honey_chilli_potato", "name": "Honey Chilli Potato", "price": 179, "veg": true, "category": "Sides", "available": false},
+    {"id": "veg_manchurian", "name": "Veg Manchurian", "price": 179, "veg": true, "category": "Mains", "available": true}
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "appClosed": false,
+  "availability": {
+    "fries_plain": true,
+    "onion_rings": true,
+    "paneer_mongolian": true,
+    "doh_6": true,
+    "chicken_lollipop_4": true,
+    "fish_chips": true,
+    "fries_cheese": true,
+    "fries_peri": true,
+    "fish_fingers": false
+  }
+}
