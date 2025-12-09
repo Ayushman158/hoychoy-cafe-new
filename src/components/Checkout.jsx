@@ -7,11 +7,6 @@ import { buildUpiIntent } from "../utils/upi";
 export default function Checkout({cart, setCart, onBack, onSubmit}){
   const items=useMemo(()=>Object.entries(cart).map(([id,q])=>{const it=data.items.find(x=>x.id===id);return it?{item:it,qty:q}:null;}).filter(Boolean),[cart]);
   const total = items.reduce((s, x) => s + x.item.price * x.qty, 0);
-const gst = total * 0.05; // Calculate 5% GST
-const finalTotal = total + gst; // Add GST to the total
-const canOrder = finalTotal >= 200; // Check if the order meets the minimum amount
-const deliveryFee = geo ? calculateDeliveryFee(geo) : 50; // Default fee for manual link
-const grandTotal = finalTotal + deliveryFee; // Add delivery fee to the final total
   const [name,setName]=useState("");
   const [phone,setPhone]=useState("");
   const [address,setAddress]=useState("");
@@ -26,7 +21,7 @@ const grandTotal = finalTotal + deliveryFee; // Add delivery fee to the final to
   useEffect(()=>{localStorage.setItem("hc_cart",JSON.stringify(cart));},[cart]);
 
   function dec(id){setCart(c=>{const v=(c[id]||0)-1;const n={...c};if(v<=0) delete n[id]; else n[id]=v;return n;});}
-  function inc(id){setCart(c=>({...c,[id]:(c[id]||0)+1}));}
+  function inc(id){console.log('Incrementing item in cart:', id);console.log('Current cart:', cart);setCart(c=>({...c,[id]:(c[id]||0)+1}));}
 
   async function capture(){
     setGeoError("");
