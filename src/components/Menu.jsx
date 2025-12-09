@@ -132,71 +132,72 @@ const NonVegIcon = () => (
   return (
     <main className="max-w-[600px] mx-auto px-4 pb-40">
       <header className="py-4">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-2xl font-extrabold">
-            <span>Hoy</span>
-            <span className="text-[#f5c84a]" style={{textShadow:"0 0 22px rgba(245,200,74,0.6), 0 0 8px rgba(245,200,74,0.5)"}}>Choy</span>
-            <span> Café</span>
-          </span>
-          <div className="relative">
-            <button onClick={()=>setMenuOpen(o=>!o)} className="w-10 h-10 flex items-center justify-center rounded-full bg-[#1a1a1a] border border-[#333] text-[#f5c84a] shadow-lg hover:bg-[#2a2a2a] transition">
-              <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M3 6h18M3 12h18M3 18h18"/>
-              </svg>
-            </button>
-            {menuOpen && (
-              <>
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[49]" onClick={()=>setMenuOpen(false)}></div>
-                <div className="fixed right-0 top-0 bottom-0 w-64 bg-[#0f0f0f] border-l border-[#222] z-[50] p-4 flex flex-col">
-                  <div className="flex items-center justify-end mb-4">
-                    <button onClick={()=>setMenuOpen(false)} className="px-2 py-1 rounded-lg border border-[#222]">✕</button>
+        <div className="sticky top-0 z-[50] bg-[#0f0f0f] pt-4 pb-3 border-b border-[#222]">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-2xl font-extrabold">
+              <span>Hoy</span>
+              <span className="text-[#f5c84a]" style={{textShadow:"0 0 22px rgba(245,200,74,0.6), 0 0 8px rgba(245,200,74,0.5)"}}>Choy</span>
+              <span> Café</span>
+            </span>
+            <div className="relative">
+              <button onClick={()=>setMenuOpen(o=>!o)} className="w-10 h-10 flex items-center justify-center rounded-full bg-[#1a1a1a] border border-[#333] text-[#f5c84a] shadow-lg hover:bg-[#2a2a2a] transition">
+                <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M3 6h18M3 12h18M3 18h18"/>
+                </svg>
+              </button>
+              {menuOpen && (
+                <>
+                  <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[49]" onClick={()=>setMenuOpen(false)}></div>
+                  <div className="fixed right-0 top-0 bottom-0 w-64 bg-[#0f0f0f] border-l border-[#222] z-[50] p-4 flex flex-col">
+                    <div className="flex items-center justify-end mb-4">
+                      <button onClick={()=>setMenuOpen(false)} className="px-2 py-1 rounded-lg border border-[#222]">✕</button>
+                    </div>
+                    <a href="/" className="block px-2 py-2 rounded hover:bg-[#1a1a1a]">Main Menu</a>
+                    <a href="/about" className="block px-2 py-2 rounded hover:bg-[#1a1a1a]">About</a>
+                    <a href="/reserve" className="block px-2 py-2 rounded hover:bg-[#1a1a1a]">Reservations</a>
                   </div>
-                  <a href="/" className="block px-2 py-2 rounded hover:bg-[#1a1a1a]">Main Menu</a>
-                  <a href="/about" className="block px-2 py-2 rounded hover:bg-[#1a1a1a]">About</a>
-                  <a href="/reserve" className="block px-2 py-2 rounded hover:bg-[#1a1a1a]">Reservations</a>
-                </div>
-              </>
-            )}
+                </>
+              )}
+            </div>
           </div>
-        </div>
-        
-        {!appOpen && appReason==='CLOSED_BY_OWNER' && (
-          <div className="mt-3 p-2 border border-[#222] rounded-xl bg-[#1a1a1a] text-[#f5c84a]">
-            <span>😔 Sorry, our restaurant is closed today. Online orders are available 12:00–9:00 PM.</span>
+          {!appOpen && appReason==='CLOSED_BY_OWNER' && (
+            <div className="mt-3 p-2 border border-[#222] rounded-xl bg-[#1a1a1a] text-[#f5c84a]">
+              <span>😔 Sorry, our restaurant is closed today. Online orders are available 12:00–9:00 PM.</span>
+            </div>
+          )}
+          <div className="mt-3">
+            <input
+              className="w-full bg-[#111] border border-[#222] rounded-xl p-2"
+              placeholder="Search items"
+              value={query}
+              onChange={e=>setQuery(e.target.value)}
+            />
           </div>
-        )}
-        <div className="mt-3">
-          <input
-            className="w-full bg-[#111] border border-[#222] rounded-xl p-2"
-            placeholder="Search items"
-            value={query}
-            onChange={e=>setQuery(e.target.value)}
-          />
-        </div>
-        <div className="flex gap-2 mt-3 items-center">
-          {['veg','nonveg'].map(f=>{
-            const active = filters.includes(f);
-            const toggle=()=>setFilters(s=> active? s.filter(x=>x!==f) : [...s,f]);
-            return (
-              <button key={f} onClick={toggle} className={`chip ${active?'chip-active':''} ${f==='veg'?'text-success':f==='nonveg'?'text-error':''}`} data-filter={f}>
+          <div className="flex gap-2 mt-3 items-center">
+            {['veg','nonveg'].map(f=>{
+              const active = filters.includes(f);
+              const toggle=()=>setFilters(s=> active? s.filter(x=>x!==f) : [...s,f]);
+              return (
+                <button key={f} onClick={toggle} className={`chip ${active?'chip-active':''} ${f==='veg'?'text-success':f==='nonveg'?'text-error':''}`} data-filter={f}>
+                  <span className="inline-flex items-center gap-2">
+                    {f==='veg'?<VegIcon />:<NonVegIcon />}
+                    <span>{f==='veg'?"Veg":"Non-Veg"}</span>
+                    {active && <span>×</span>}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex gap-2 overflow-auto mt-3 pb-2">
+            {categories.map(c=> (
+              <button key={c} onClick={()=>setCat(cat===c?null:c)} className={`chip ${cat===c?'chip-active':''}`}>
                 <span className="inline-flex items-center gap-2">
-                  {f==='veg'?<VegIcon />:<NonVegIcon />}
-                  <span>{f==='veg'?"Veg":"Non-Veg"}</span>
-                  {active && <span>×</span>}
+                  <span>{c}</span>
+                  {cat===c && <span>×</span>}
                 </span>
               </button>
-            );
-          })}
-        </div>
-        <div className="flex gap-2 overflow-auto mt-3">
-          {categories.map(c=> (
-            <button key={c} onClick={()=>setCat(cat===c?null:c)} className={`chip ${cat===c?'chip-active':''}`}>
-              <span className="inline-flex items-center gap-2">
-                <span>{c}</span>
-                {cat===c && <span>×</span>}
-              </span>
-            </button>
-          ))}
+            ))}
+          </div>
         </div>
         <div className="mt-4">
           <div className="text-xl font-bold">Best Sellers</div>
