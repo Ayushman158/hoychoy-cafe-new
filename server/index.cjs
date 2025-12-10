@@ -227,6 +227,18 @@ app.post('/api/admin/set-app-open', requireAdmin, (req,res)=>{
   res.json({ok:true, appClosed:overrides.appClosed});
 });
 
+app.post('/api/admin/set-closing-message', requireAdmin, (req,res)=>{
+  try{
+    const { preset, message } = req.body||{};
+    overrides.closingPreset = preset || null;
+    overrides.closingMessage = (message||'').trim();
+    saveOverrides(overrides);
+    res.json({ok:true, closingMessage:overrides.closingMessage, closingPreset:overrides.closingPreset});
+  }catch(e){
+    res.status(500).json({error:'server-error'});
+  }
+});
+
 app.post('/api/admin/set-availability', requireAdmin, (req,res)=>{
   const { id, available } = req.body || {};
   if(!id) return res.status(400).json({error:'id required'});

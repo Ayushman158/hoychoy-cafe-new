@@ -23,6 +23,7 @@ export default function Admin(){
   const [orders,setOrders]=useState([]);
   const [selected,setSelected]=useState(null);
   const [ownerClosed,setOwnerClosed]=useState(false);
+  const [closingMessage,setClosingMessage]=useState("");
 
   useEffect(()=>{ refreshStatus(); },[]);
   useEffect(()=>{ refreshOverrides(); },[]);
@@ -67,7 +68,7 @@ export default function Admin(){
     try{ const r=await fetch(`${BACKEND_URL}/api/app-status`); const d=await r.json(); if(r.ok) setStatus(d); }catch{}
   }
   async function refreshOverrides(){
-    try{ const r=await fetch(`${BACKEND_URL}/api/menu-overrides`); const d=await r.json(); if(r.ok) setOwnerClosed(!!d.appClosed); }catch{}
+    try{ const r=await fetch(`${BACKEND_URL}/api/menu-overrides`); const d=await r.json(); if(r.ok){ setOwnerClosed(!!d.appClosed); setClosingMessage(String(d.closingMessage||"")); } }catch{}
   }
   async function setOpen(v){
     setMsg("");
@@ -162,6 +163,33 @@ export default function Admin(){
         </div>
         <div className="flex gap-2 mt-2">
           <button className="btn" onClick={()=>{refreshStatus();refreshOverrides();}}>Refresh</button>
+        </div>
+        <div className="mt-3">
+          <div className="section-title">Closing Message</div>
+          <div className="text-muted text-xs mb-2">Shown on the customer app when the restaurant is closed by owner.</div>
+          <div className="grid grid-cols-1 gap-2">
+            <select className="bg-[#111] border border-[#222] rounded-xl p-2" onChange={e=>setClosingMessage(e.target.value)} value={closingMessage}>
+              {[
+                'We are closed today. Thank you for your support! 🫶',
+                'Closed due to maintenance. We will be back soon ✨',
+                'Closed for a private event. See you tomorrow!',
+                'We will reopen tomorrow at 12:00 PM.',
+                closingMessage||''
+              ].filter((v,i,a)=>v && a.indexOf(v)===i).map((v,i)=>(<option key={i} value={v}>{v}</option>))}
+            </select>
+            <textarea className="bg-[#111] border border-[#222] rounded-xl p-2 min-h-[80px]" value={closingMessage} onChange={e=>setClosingMessage(e.target.value)} placeholder="Custom message (optional)" />
+            <div className="flex gap-2">
+              <button className="btn btn-primary" type="button" onClick={async ()=>{
+                setMsg("");
+                try{
+                  const r=await fetch(`${BACKEND_URL}/api/admin/set-closing-message`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},body:JSON.stringify({preset:'custom',message:closingMessage})});
+                  const d=await r.json();
+                  if(!r.ok || !d.ok){ setMsg('Failed to save message'); return; }
+                  setMsg('Closing message updated');
+                }catch{ setMsg('Network error'); }
+              }}>Save Message</button>
+            </div>
+          </div>
         </div>
       </div>
       )}

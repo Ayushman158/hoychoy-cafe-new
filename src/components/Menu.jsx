@@ -44,6 +44,7 @@ export default function Menu({cart, setCart, onProceed}){
   const [query,setQuery]=useState("");
   const [appOpen,setAppOpen]=useState(true);
   const [appReason,setAppReason]=useState('OPEN');
+  const [closingMsg,setClosingMsg]=useState("");
   const VegIcon = () => (
   <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" strokeWidth="2">
     <rect
@@ -124,6 +125,14 @@ const NonVegIcon = () => (
     load();
   },[]);
 
+  useEffect(()=>{
+    async function load(){
+      try{ const r=await fetch(`${BACKEND_URL}/api/menu-overrides`); const d=await r.json(); if(r.ok){ setClosingMsg(String(d.closingMessage||"")); } }
+      catch{}
+    }
+    load();
+  },[]);
+
   function add(id){
   console.log('Adding item to cart:', id);
   console.log('Current cart:', cart);setCart(c=>({...c,[id]:(c[id]||0)+1}));setJustAdded(id);setTimeout(()=>setJustAdded(null),1000);} 
@@ -161,7 +170,7 @@ const NonVegIcon = () => (
           </div>
           {!appOpen && appReason==='CLOSED_BY_OWNER' && (
             <div className="mt-3 p-2 border border-[#222] rounded-xl bg-[#1a1a1a] text-[#f5c84a]">
-              <span>😔 Sorry, our restaurant is closed today. Online orders are available 12:00–9:00 PM.</span>
+              <span>{closingMsg || '😔 Sorry, our restaurant is closed today. Online orders are available 12:00–9:00 PM.'}</span>
             </div>
           )}
           <div className="mt-3">
