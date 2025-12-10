@@ -2,7 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const { StandardCheckoutClient, Env } = require('pg-sdk-node');
+const { StandardCheckoutClient, Env, MetaInfo, StandardCheckoutPayRequest } = require('pg-sdk-node');
 
 const app = express();
 app.use(express.json());
@@ -275,22 +275,25 @@ app.post('/api/admin/remove-item', requireAdmin, (req,res)=>{
 
 app.post('/api/initiate-payment', async (req,res)=>{
   try{
-    const { amount, orderId, customerPhone, customerName, redirectUrl, callbackUrl } = req.body;
+    const { amount, orderId, customerPhone, customerName, redirectUrl } = req.body;
     if(!amount || !orderId) return res.status(400).json({error:'amount and orderId required'});
     if(Number(amount) < 200) return res.status(400).json({error:'min-order-amount'});
-    const payload = {
-      merchantId: MERCHANT_ID,
-      merchantTransactionId: orderId,
-      amount: Math.round(Number(amount)*100),
-      merchantUserId: customerPhone || customerName || 'user',
-      mobileNumber: customerPhone,
-      redirectUrl,
-      callbackUrl,
-      paymentInstrument: { type: 'PAY_PAGE' }
-    };
-    const resp = await phonepePay(payload);
-    if(!resp.ok) return res.status(500).json({error:'phonepe-init-failed', details:resp.data});
-    const url = resp.data?.data?.instrumentResponse?.redirectInfo?.url;
+    const client = getSdkClient();
+    if(!client) return res.status(500).json({error:'sdk-not-configured'});
+    const paisa = Math.round(Number(amount)*100);
+    const metaInfo = MetaInfo.builder()
+      .udf1(String(customerPhone||''))
+      .udf2(String(customerName||''))
+      .build();
+    const request = StandardCheckoutPayRequest.builder()
+      .merchantOrderId(String(orderId))
+      .amount(paisa)
+      .redirectUrl(String(redirectUrl||''))
+      .metaInfo(metaInfo)
+      .build();
+    const response = await client.pay(request);
+    const url = response?.redirect_url || response?.redirectUrl || null;
+    if(!url) return res.status(500).json({error:'phonepe-init-failed', details:response});
     payments.set(orderId, {status:'PENDING', amount});
     return res.json({redirectUrl:url, orderId});
   }catch(e){
