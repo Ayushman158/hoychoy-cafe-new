@@ -43,6 +43,31 @@ export default function App(){
     }
   },[]);
 
+  useEffect(()=>{
+    const t = {
+      menu: 'HoyChoy Café — Menu',
+      checkout: 'HoyChoy Café — Cart & Checkout',
+      confirm: 'HoyChoy Café — Confirm Order',
+      payment: 'HoyChoy Café — Payment Status',
+      splash: 'HoyChoy Café — Welcome',
+      success: 'HoyChoy Café — Order Placed',
+    }[view];
+    let tp = t;
+    if(view==='policy'){
+      const map={
+        privacy:'HoyChoy Café — Privacy Policy',
+        terms:'HoyChoy Café — Terms & Conditions',
+        refund:'HoyChoy Café — Refund & Cancellation',
+        shipping:'HoyChoy Café — Shipping Policy',
+        about:'HoyChoy Café — About',
+        reserve:'HoyChoy Café — Reservations',
+        admin:'HoyChoy Café — Admin'
+      };
+      tp = map[policy] || 'HoyChoy Café';
+    }
+    if(tp) document.title = tp;
+  },[view,policy]);
+
   function proceed(){setView("checkout");}
   function backToMenu(){setView("menu");}
   function toConfirm(payload){setCust(payload);setView("confirm");}
