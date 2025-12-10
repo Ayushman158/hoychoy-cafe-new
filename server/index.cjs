@@ -136,6 +136,7 @@ async function phonepeRefund(merchantTransactionId, amount){
 const payments = new Map();
 const orders = [];
 const orderClients = new Set();
+const orderRecon = new Map();
 
 function isWithinHours(){ const h=new Date().getHours(); return h>=12 && h<21; }
 app.get('/api/app-status', (req,res)=>{
@@ -299,7 +300,7 @@ app.post('/api/admin/remove-item', requireAdmin, (req,res)=>{
 
 app.post('/api/initiate-payment', async (req,res)=>{
   try{
-    const { amount, orderId, customerPhone, customerName, redirectUrl } = req.body;
+    const { amount, orderId, customerPhone, customerName, redirectUrl, expireAfter } = req.body;
     if(!amount || !orderId) return res.status(400).json({error:'amount and orderId required'});
     if(Number(amount) < 200) return res.status(400).json({error:'min-order-amount'});
     const client = getSdkClient();
@@ -319,6 +320,7 @@ app.post('/api/initiate-payment', async (req,res)=>{
     const url = response?.redirect_url || response?.redirectUrl || null;
     if(!url) return res.status(500).json({error:'phonepe-init-failed', details:response});
     payments.set(orderId, {status:'PENDING', amount});
+    startReconcile(orderId, Number(expireAfter)||1800);
     return res.json({redirectUrl:url, orderId});
   }catch(e){
     return res.status(500).json({error:'server-error', message:String(e)});
@@ -408,6 +410,46 @@ app.get('/api/order-status/:id', async (req,res)=>{
     res.status(500).json({error:'sdk-order-status-failed', message:String(e)});
   }
 });
+
+function startReconcile(orderId, expireAfter){
+  try{ if(orderRecon.has(orderId)) return; }catch{}
+  const start = Date.now();
+  let elapsed = 0;
+  let stage = -1;
+  const plan = [
+    {delay:20000, freq:0},
+    {duration:30000, freq:3000},
+    {duration:60000, freq:6000},
+    {duration:60000, freq:10000},
+    {duration:60000, freq:30000},
+    {duration:Infinity, freq:60000}
+  ];
+  async function poll(){
+    try{
+      const client = getSdkClient();
+      if(!client){ scheduleNext(); return; }
+      const response = await client.getOrderStatus(String(orderId));
+      const status = response?.state || 'PENDING';
+      const list = Array.isArray(response?.payment_details) ? response.payment_details : [];
+      const latest = list.length ? list[list.length-1] : null;
+      const txn = latest?.transactionId || null;
+      payments.set(orderId,{status, transactionId:txn});
+      const age = Math.floor((Date.now()-start)/1000);
+      if(status==='COMPLETED' || status==='FAILED' || age>=expireAfter){ stop(); return; }
+      scheduleNext();
+    }catch{ scheduleNext(); }
+  }
+  function scheduleNext(){
+    const ageMs = Date.now()-start;
+    if(stage<0){ stage=0; setTimer(plan[0].delay); return; }
+    let acc=0; for(let i=1;i<plan.length;i++){ const seg=plan[i]; acc+=seg.duration; if(ageMs<=plan[0].delay+acc){ setTimer(seg.freq); return; } }
+    setTimer(plan[plan.length-1].freq);
+  }
+  let t=null;
+  function setTimer(ms){ clearTimeout(t); t=setTimeout(poll, ms); orderRecon.set(orderId,{t}); }
+  function stop(){ try{ clearTimeout(t); orderRecon.delete(orderId); }catch{} }
+  scheduleNext();
+}
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, ()=>{
