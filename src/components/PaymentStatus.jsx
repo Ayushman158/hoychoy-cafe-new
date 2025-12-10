@@ -35,7 +35,7 @@ export default function PaymentStatus(){
       const items = (cust.items||[]).map(({item,qty})=>({id:item.id,name:item.name,qty,price:item.price}));
       await fetch(`${BACKEND_URL}/api/order`,{
         method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({orderId, transactionId: txnId || id, customer:{name:cust.name,phone:cust.phone,address:cust.address,geo:cust.geo||null,manualLink:cust.manualLink||''}, items, total:cust.total})
+        body:JSON.stringify({orderId, transactionId: txnId || id, customer:{name:cust.name,phone:cust.phone,address:cust.address,geo:cust.geo||null,manualLink:cust.manualLink||''}, items, total:(cust.grandTotal||cust.total)})
       });
     }catch{}
     const lines=[];
@@ -44,7 +44,10 @@ export default function PaymentStatus(){
     lines.push("📋 *Order Details:*");
     cust.items.forEach(({item,qty})=>lines.push(`• ${item.name} ×${qty} - ₹${item.price}`));
     lines.push("");
-    lines.push(`💰 *Total Amount:* ₹${cust.total}`);
+    lines.push(`💰 *Subtotal:* ₹${cust.total}`);
+    if(cust.gst!=null) lines.push(`🧾 *GST (5%):* ₹${cust.gst}`);
+    if(cust.deliveryFee!=null) lines.push(`🚚 *Delivery Fee:* ₹${cust.deliveryFee}`);
+    lines.push(`💳 *Grand Total:* ₹${cust.grandTotal||cust.total}`);
     lines.push("");
     lines.push("👤 *Customer Details:*");
     lines.push(`Name: ${cust.name}`);

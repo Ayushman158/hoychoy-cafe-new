@@ -104,7 +104,16 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
     }
     localStorage.setItem('pp_last_txn', orderId);
     localStorage.setItem('hc_cust', JSON.stringify({name,phone,address,geo,manualLink:manualLink.trim(),items,total,gst,deliveryFee,grandTotal}));
-    window.location.href = data.redirectUrl;
+    const tokenUrl = data.redirectUrl;
+    const cb = (response)=>{
+      if(response==='USER_CANCEL'){ return; }
+      window.location.href = `/?merchantTransactionId=${orderId}`;
+    };
+    if(window && window.PhonePeCheckout && window.PhonePeCheckout.transact){
+      window.PhonePeCheckout.transact({ tokenUrl, callback: cb, type: 'IFRAME' });
+    }else{
+      window.location.href = tokenUrl;
+    }
   }
 
   return (
