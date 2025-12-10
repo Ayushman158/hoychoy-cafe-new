@@ -19,10 +19,11 @@ const MERCHANT_ID = process.env.PHONEPE_MERCHANT_ID || 'MERCHANT_ID_HERE';
 const SALT_KEY = process.env.PHONEPE_SALT_KEY || 'SALT_KEY_HERE';
 const SALT_INDEX = process.env.PHONEPE_SALT_INDEX || '1';
 const ENV = (process.env.PHONEPE_ENV || 'SANDBOX').toUpperCase();
-const BASE = ENV==='PROD' ? 'https://api.phonepe.com/apis/hermes' : 'https://api-preprod.phonepe.com/apis/pg-sandbox';
+const BASE = ENV==='PROD' ? 'https://api.phonepe.com/apis/pg' : 'https://api-preprod.phonepe.com/apis/pg-sandbox';
 const CLIENT_ID = process.env.PHONEPE_CLIENT_ID || '';
 const CLIENT_SECRET = process.env.PHONEPE_CLIENT_SECRET || '';
 const CLIENT_VERSION = process.env.PHONEPE_CLIENT_VERSION || '';
+const ACCESS_CODE = process.env.PHONEPE_ACCESS_CODE || '';
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'hoychoycafe@gmail.com';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'h0ych0ycafe123';
 
@@ -41,6 +42,7 @@ let tokenCache = { token: '', expiresAt: 0 };
 
 async function getAuthToken(){
   try{
+    if(ACCESS_CODE) return ACCESS_CODE;
     const now = Math.floor(Date.now()/1000);
     if(tokenCache.token && tokenCache.expiresAt - 60 > now) return tokenCache.token;
     const url = ENV==='PROD'
@@ -70,7 +72,7 @@ function xVerify(hashInput){
 }
 
 async function phonepePay(payload){
-  const path = '/pg/v1/pay';
+  const path = '/pg/checkout/v2/pay';
   const json = JSON.stringify(payload);
   const base64 = Buffer.from(json).toString('base64');
   const headers = {
