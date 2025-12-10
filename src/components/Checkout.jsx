@@ -15,8 +15,14 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
   const [geoError,setGeoError]=useState("");
   const [resolvedCoord,setResolvedCoord]=useState(null);
   const [resolving,setResolving]=useState(false);
-  const [distance,setDistance]=useState(null);
   const [resolveMsg,setResolveMsg]=useState("");
+  const coord = useMemo(()=>{
+    return geo || resolvedCoord || parseManualCoords(manualLink);
+  },[geo,resolvedCoord,manualLink]);
+  const distance = useMemo(()=>{
+    if(!coord) return null;
+    return Number(haversine(CAFE_LAT, CAFE_LNG, coord.lat, coord.lng).toFixed(2));
+  },[coord]);
   const valid=name.trim()&&phone.replace(/\D/g,"").length===10&&address.trim()&&((!!geo)||isValidManualLink(manualLink));
   const upiIntent = buildUpiIntent(UPI_ID, total, MERCHANT_NAME, "Order at HoyChoy Café", `HC-${Date.now()}`);
   const [copied,setCopied]=useState(false);
@@ -83,11 +89,8 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
   }
 
   function calculateDeliveryFee(){
-    const coord= geo || resolvedCoord || parseManualCoords(manualLink);
-    if(!coord) return 50;
-    const d=haversine(CAFE_LAT, CAFE_LNG, coord.lat, coord.lng);
-    setDistance(Number.isFinite(d)?Number(d.toFixed(2)):null);
-    return d>5 ? 80 : 50;
+    if(distance==null) return 50;
+    return distance>5 ? 80 : 50;
   }
 
   const gst = Math.round(total*0.05);
@@ -135,8 +138,6 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
       const local = parseManualCoords(manualLink);
       if(local){
         setResolvedCoord(local);
-        const d=haversine(CAFE_LAT, CAFE_LNG, local.lat, local.lng);
-        setDistance(Number(d.toFixed(2)));
         setResolveMsg("Location updated");
         setResolving(false);
         return;
@@ -146,8 +147,6 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
         const d = await r.json();
         if(r.ok && d.coord){
           setResolvedCoord(d.coord);
-          const dist=haversine(CAFE_LAT, CAFE_LNG, d.coord.lat, d.coord.lng);
-          setDistance(Number(dist.toFixed(2)));
           setResolveMsg("Location updated");
         }else{
           setResolveMsg("Could not read map link");
