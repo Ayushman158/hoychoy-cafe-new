@@ -170,6 +170,7 @@ export default function Admin(){
           <div className="grid grid-cols-1 gap-2">
             <select className="bg-[#111] border border-[#222] rounded-xl p-2" onChange={e=>setClosingMessage(e.target.value)} value={closingMessage}>
               {[
+                '😔 Sorry, our restaurant is closed today. Online orders are available 12:00–9:00 PM.',
                 'We are closed today. Thank you for your support! 🫶',
                 'Closed due to maintenance. We will be back soon ✨',
                 'Closed for a private event. See you tomorrow!',
@@ -186,6 +187,7 @@ export default function Admin(){
                   const d=await r.json();
                   if(!r.ok || !d.ok){ setMsg('Failed to save message'); return; }
                   setMsg('Closing message updated');
+                  await refreshOverrides();
                 }catch{ setMsg('Network error'); }
               }}>Save Message</button>
             </div>
