@@ -500,3 +500,17 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, ()=>{
   console.log(`PhonePe server listening on http://localhost:${PORT}`);
 });
+app.post('/api/admin/order-delivered', requireAdmin, (req,res)=>{
+  try{
+    const { id } = req.body||{};
+    if(!id) return res.status(400).json({error:'id required'});
+    const idx = orders.findIndex(o=>String(o.id)===String(id));
+    if(idx<0) return res.status(404).json({error:'order-not-found'});
+    orders[idx] = { ...orders[idx], status:'DELIVERED', deliveredAt: Date.now() };
+    const payload = `data: ${JSON.stringify({type:'order.updated', order:orders[idx]})}\n\n`;
+    orderClients.forEach((res)=>{ try{ res.write(payload); }catch{} });
+    return res.json({ok:true, order:orders[idx]});
+  }catch(e){
+    return res.status(500).json({error:'server-error'});
+  }
+});

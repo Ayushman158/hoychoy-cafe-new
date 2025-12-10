@@ -21,6 +21,7 @@ export default function Admin(){
   const [category,setCategory]=useState("Misc");
   const [msg,setMsg]=useState("");
   const [orders,setOrders]=useState([]);
+  const [selected,setSelected]=useState(null);
   const [ownerClosed,setOwnerClosed]=useState(false);
 
   useEffect(()=>{ refreshStatus(); },[]);
@@ -42,6 +43,7 @@ export default function Admin(){
           const d = JSON.parse(ev.data||'{}');
           if(d.type==='init' && Array.isArray(d.orders)) setOrders(d.orders);
           if(d.type==='order.created' && d.order) setOrders((prev)=>[d.order, ...prev]);
+          if(d.type==='order.updated' && d.order) setOrders((prev)=>prev.map(x=>x.id===d.order.id?d.order:x));
         }catch{}
       };
       es.onerror = ()=>{ es.close(); };
@@ -97,6 +99,17 @@ export default function Admin(){
         return;
       }
       setMsg('Refund initiated successfully');
+    }catch{ setMsg('Network error'); }
+  }
+
+  async function markDelivered(id){
+    setMsg("");
+    try{
+      const r=await fetch(`${BACKEND_URL}/api/admin/order-delivered`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},body:JSON.stringify({id})});
+      const d=await r.json();
+      if(!r.ok || !d.ok){ setMsg('Failed to mark delivered'); return; }
+      setOrders(prev=>prev.map(x=>x.id===id?d.order:x));
+      setMsg('Order marked delivered');
     }catch{ setMsg('Network error'); }
   }
 
@@ -207,12 +220,48 @@ export default function Admin(){
                 <span className="font-bold">₹{o.total}</span>
                 <span>{o.customer?.name}</span>
                 <span className="text-muted text-xs">{new Date(o.createdAt).toLocaleTimeString()}</span>
+                {o.status==='DELIVERED' && <span className="text-success text-xs">Delivered</span>}
+                <button className="px-2 py-1 rounded-md bg-[#2a2a2a] border border-[#3a3a3a]" onClick={()=>setSelected(o)}>View</button>
+                <button className="px-2 py-1 rounded-md bg-[#2a2a2a] border border-[#3a3a3a]" onClick={()=>markDelivered(o.id)}>Mark Delivered</button>
                 <button className="px-2 py-1 rounded-md bg-[#2a2a2a] border border-[#3a3a3a]" onClick={()=>refundOrder(o.id, o.total)}>Refund</button>
               </span>
             </li>
           ))}
         </ul>
       </div>
+      )}
+
+      {authed && selected && (
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center" onClick={()=>setSelected(null)}>
+          <div className="bg-[#0f0f0f] border border-[#222] rounded-xl p-4 w-[600px] max-w-[95%]" onClick={e=>e.stopPropagation()}>
+            <div className="section-title flex items-center justify-between"><span>Order #{selected.id}</span><button className="btn" onClick={()=>setSelected(null)}>✕</button></div>
+            <div className="mt-2">
+              <div className="row"><span>Status</span><span className="font-bold">{selected.status||'NEW'}</span></div>
+              <div className="row"><span>Total</span><span className="font-bold">₹{selected.total}</span></div>
+              <div className="row"><span>Customer</span><span>{selected.customer?.name} • {selected.customer?.phone}</span></div>
+              <div className="mt-2"><div className="font-semibold">Address</div><div className="text-sm">{selected.customer?.address}</div></div>
+              {selected.customer?.geo && (
+                <div className="mt-2 text-sm"><a className="text-[#f5c84a] underline" href={`https://maps.google.com/?q=${selected.customer.geo.lat},${selected.customer.geo.lng}`} target="_blank">Open in Maps</a></div>
+              )}
+              {selected.customer?.manualLink && (
+                <div className="mt-2 text-sm"><a className="text-[#f5c84a] underline" href={selected.customer.manualLink} target="_blank">User Link</a></div>
+              )}
+              <div className="mt-3">
+                <div className="font-semibold">Items</div>
+                <ul className="text-sm mt-1">
+                  {(selected.items||[]).map((it,i)=> (
+                    <li key={i}>• {it.item?.name} ×{it.qty} — ₹{it.item?.price}</li>
+                  ))}
+                </ul>
+              </div>
+              <div className="flex gap-2 mt-3">
+                <a className="btn" href={`tel:${selected.customer?.phone}`}>Call</a>
+                <button className="btn" onClick={()=>markDelivered(selected.id)}>Mark Delivered</button>
+                <button className="btn" onClick={()=>refundOrder(selected.id, selected.total)}>Refund</button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </section>
   );
