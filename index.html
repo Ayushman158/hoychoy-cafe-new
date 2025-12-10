@@ -50,5 +50,22 @@
     <div id="root"></div>
     <script src="https://mercury.phonepe.com/web/bundle/checkout.js"></script>
     <script type="module" src="/src/main.jsx"></script>
+    <script>
+      (function(){
+        try{
+          var origin = window.location.origin;
+          var canon = document.querySelector('link[rel="canonical"]');
+          if(canon) canon.setAttribute('href', origin + '/');
+          var ogUrl = document.querySelector('meta[property="og:url"]');
+          if(ogUrl) ogUrl.setAttribute('content', origin + '/');
+          var ld = document.querySelector('script[type="application/ld+json"]');
+          if(ld){
+            var obj = JSON.parse(ld.textContent);
+            obj.url = origin + '/';
+            ld.textContent = JSON.stringify(obj);
+          }
+        }catch(e){}
+      })();
+    </script>
   </body>
 </html>
