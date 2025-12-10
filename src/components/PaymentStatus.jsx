@@ -5,6 +5,7 @@ export default function PaymentStatus(){
   const [status,setStatus]=useState('PENDING');
   const [txnId,setTxnId]=useState('');
   const [error,setError]=useState('');
+  const [autoSent,setAutoSent]=useState(false);
   const params = new URLSearchParams(window.location.search);
   const fromQuery = params.get('merchantTransactionId');
   const localId = localStorage.getItem('pp_last_txn')||'';
@@ -31,6 +32,13 @@ export default function PaymentStatus(){
     }
     check();
   },[id]);
+
+  useEffect(()=>{
+    if(!autoSent && (status==='SUCCESS' || status==='COMPLETED')){
+      sendWhatsapp();
+      setAutoSent(true);
+    }
+  },[status]);
 
   async function sendWhatsapp(){
     const custRaw = localStorage.getItem('hc_cust');
@@ -89,7 +97,7 @@ export default function PaymentStatus(){
             <div className="row"><span>Transaction ID</span><span className="font-bold">{txnId || id}</span></div>
           </div>
         )}
-        {status==='SUCCESS' && (
+        {(status==='SUCCESS' || status==='COMPLETED') && (
           <button className="btn btn-primary w-full mt-3" onClick={sendWhatsapp}>Submit Order</button>
         )}
         {status!=='SUCCESS' && !error && (
