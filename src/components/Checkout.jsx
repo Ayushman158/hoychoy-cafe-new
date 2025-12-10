@@ -10,6 +10,7 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
   const [name,setName]=useState("");
   const [phone,setPhone]=useState("");
   const [address,setAddress]=useState("");
+  const [note,setNote]=useState("");
   const [geo,setGeo]=useState(null);
   const [manualLink,setManualLink]=useState("");
   const [geoError,setGeoError]=useState("");
@@ -99,7 +100,7 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
   const grandTotal = total + gst + deliveryFee;
   const canOrder = total >= 200;
 
-  function submit(){onSubmit({name,phone,address,geo,manualLink:manualLink.trim(),total,items,gst,deliveryFee,grandTotal});}
+  function submit(){onSubmit({name,phone,address,note,geo,manualLink:manualLink.trim(),total,items,gst,deliveryFee,grandTotal});}
 
   async function payNow(){
     if(!canOrder){
@@ -119,7 +120,7 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
       return;
     }
     localStorage.setItem('pp_last_txn', orderId);
-    localStorage.setItem('hc_cust', JSON.stringify({name,phone,address,geo,manualLink:manualLink.trim(),items,total,gst,deliveryFee,grandTotal}));
+    localStorage.setItem('hc_cust', JSON.stringify({name,phone,address,note,geo,manualLink:manualLink.trim(),items,total,gst,deliveryFee,grandTotal}));
     const tokenUrl = data.redirectUrl;
     const cb = (response)=>{
       if(response==='USER_CANCEL'){ return; }
@@ -211,8 +212,9 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
       <div className="card mt-3">
         <div className="section-title">Customer Details</div>
         <label className="flex flex-col gap-1 my-2"><span>Name *</span><input className="bg-[#111] border border-[#222] rounded-xl p-2" value={name} onChange={e=>setName(e.target.value)} />{!name.trim()&&<span className="text-error text-xs mt-1">Name is required</span>}</label>
-        <label className="flex flex-col gap-1 my-2"><span>Phone Number *</span><input className="bg-[#111] border border-[#222] rounded-xl p-2" value={phone} onChange={e=>setPhone(e.target.value)} />{(phone&&phone.replace(/\D/g,"").length!==10)&&<span className="text-error text-xs mt-1">Enter 10-digit phone</span>}</label>
+        <label className="flex flex-col gap-1 my-2"><span>Phone Number *</span><input className="bg-[#111] border border-[#222] rounded-xl p-2" value={phone} onChange={e=>setPhone(e.target.value.replace(/[^\d]/g,''))} />{(phone&&phone.replace(/\D/g,"").length!==10)&&<span className="text-error text-xs mt-1">Enter 10-digit phone</span>}</label>
         <label className="flex flex-col gap-1 my-2"><span>Delivery Address *</span><textarea className="bg-[#111] border border-[#222] rounded-xl p-2 min-h-[80px]" value={address} onChange={e=>setAddress(e.target.value)} />{!address.trim()&&<span className="text-error text-xs mt-1">Address is required</span>}</label>
+        <label className="flex flex-col gap-1 my-2"><span>Order Notes (optional)</span><textarea className="bg-[#111] border border-[#222] rounded-xl p-2 min-h-[60px]" value={note} onChange={e=>setNote(e.target.value)} placeholder="e.g., Please add less salt / ring the doorbell once" /></label>
         <div className="flex flex-col gap-2">
           <div>Share Your Exact Location (Required)</div>
           <button className="btn w-full" onClick={capture}>Use My Current Location</button>

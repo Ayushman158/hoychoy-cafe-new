@@ -287,6 +287,9 @@ export default function Admin(){
               <div className="row"><span>Total</span><span className="font-bold">₹{selected.total}</span></div>
               <div className="row"><span>Customer</span><span>{selected.customer?.name} • {selected.customer?.phone}</span></div>
               <div className="mt-2"><div className="font-semibold">Address</div><div className="text-sm">{selected.customer?.address}</div></div>
+              {selected.customer?.note && (
+                <div className="mt-2"><div className="font-semibold">Order Notes</div><div className="text-sm">{selected.customer?.note}</div></div>
+              )}
               {selected.customer?.geo && (
                 <div className="mt-2 text-sm"><a className="text-[#f5c84a] underline" href={`https://maps.google.com/?q=${selected.customer.geo.lat},${selected.customer.geo.lng}`} target="_blank">Open in Maps</a></div>
               )}

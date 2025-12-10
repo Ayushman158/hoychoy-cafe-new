@@ -49,7 +49,7 @@ export default function PaymentStatus(){
       const items = (cust.items||[]).map(({item,qty})=>({id:item.id,name:item.name,qty,price:item.price}));
       await fetch(`${BACKEND_URL}/api/order`,{
         method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({orderId, transactionId: txnId || id, customer:{name:cust.name,phone:cust.phone,address:cust.address,geo:cust.geo||null,manualLink:cust.manualLink||''}, items, total:(cust.grandTotal||cust.total)})
+        body:JSON.stringify({orderId, transactionId: txnId || id, customer:{name:cust.name,phone:cust.phone,address:cust.address,note:cust.note||'',geo:cust.geo||null,manualLink:cust.manualLink||''}, items, total:(cust.grandTotal||cust.total)})
       });
     }catch{}
     const lines=[];
@@ -62,6 +62,7 @@ export default function PaymentStatus(){
     if(cust.gst!=null) lines.push(`🧾 *GST (5%):* ₹${cust.gst}`);
     if(cust.deliveryFee!=null) lines.push(`🚚 *Delivery Fee:* ₹${cust.deliveryFee}`);
     lines.push(`💳 *Grand Total:* ₹${cust.grandTotal||cust.total}`);
+    if(cust.note){ lines.push(""); lines.push(`📝 *Order Notes:* ${cust.note}`); }
     lines.push("");
     lines.push("👤 *Customer Details:*");
     lines.push(`Name: ${cust.name}`);
