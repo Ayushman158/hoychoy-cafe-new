@@ -14,6 +14,9 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
   const [manualLink,setManualLink]=useState("");
   const [geoError,setGeoError]=useState("");
   const [resolvedCoord,setResolvedCoord]=useState(null);
+  const [resolving,setResolving]=useState(false);
+  const [distance,setDistance]=useState(null);
+  const [resolveMsg,setResolveMsg]=useState("");
   const valid=name.trim()&&phone.replace(/\D/g,"").length===10&&address.trim()&&((!!geo)||isValidManualLink(manualLink));
   const upiIntent = buildUpiIntent(UPI_ID, total, MERCHANT_NAME, "Order at HoyChoy Café", `HC-${Date.now()}`);
   const [copied,setCopied]=useState(false);
@@ -83,6 +86,7 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
     const coord= geo || resolvedCoord || parseManualCoords(manualLink);
     if(!coord) return 50;
     const d=haversine(CAFE_LAT, CAFE_LNG, coord.lat, coord.lng);
+    setDistance(Number.isFinite(d)?Number(d.toFixed(2)):null);
     return d>5 ? 80 : 50;
   }
 
@@ -122,6 +126,39 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
     }else{
       window.location.href = tokenUrl;
     }
+  }
+
+  async function resolveManual(){
+    setResolving(true);
+    setResolveMsg("");
+    try{
+      const local = parseManualCoords(manualLink);
+      if(local){
+        setResolvedCoord(local);
+        const d=haversine(CAFE_LAT, CAFE_LNG, local.lat, local.lng);
+        setDistance(Number(d.toFixed(2)));
+        setResolveMsg("Location updated");
+        setResolving(false);
+        return;
+      }
+      if(isValidManualLink(manualLink)){
+        const r = await fetch(`${BACKEND_URL}/api/resolve-maps`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:manualLink})});
+        const d = await r.json();
+        if(r.ok && d.coord){
+          setResolvedCoord(d.coord);
+          const dist=haversine(CAFE_LAT, CAFE_LNG, d.coord.lat, d.coord.lng);
+          setDistance(Number(dist.toFixed(2)));
+          setResolveMsg("Location updated");
+        }else{
+          setResolveMsg("Could not read map link");
+        }
+      }else{
+        setResolveMsg("Enter a valid map link or lat,lng");
+      }
+    }catch{
+      setResolveMsg("Could not update location");
+    }
+    setResolving(false);
   }
 
   useEffect(()=>{
@@ -179,6 +216,8 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
           {!geo && <label className="flex flex-col gap-1"><span>Or paste Google Maps link or coordinates *</span>
             <input className="bg-[#111] border border-[#222] rounded-xl p-2" value={manualLink} onChange={e=>setManualLink(e.target.value)} placeholder="https://maps.google.com/?q=lat,lng or 27.2348,94.1101" />
             {!isValidManualLink(manualLink) && <span className="text-error text-xs">Valid map link or lat,lng required</span>}
+            <button className="btn mt-2" type="button" onClick={resolveManual} disabled={resolving}>{resolving?"Updating...":"Update Delivery Fee"}</button>
+            {resolveMsg && <span className={`text-xs mt-1 ${resolveMsg.includes("updated")?"text-success":"text-error"}`}>{resolveMsg}{distance!=null?` • Distance: ${distance} km`:""}</span>}
           </label>}
         </div>
         <div className="text-muted text-xs mt-1">We'll use your location only for this delivery.</div>
