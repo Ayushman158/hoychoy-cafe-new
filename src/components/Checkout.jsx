@@ -184,7 +184,9 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
       <div className="card mt-3">
         <div className="section-title flex items-center justify-between">
           <span>Your Order</span>
-          <button className="px-2 py-1 text-sm text-white/80 hover:text-white underline underline-offset-2" type="button" onClick={clearCart} aria-label="Clear Cart">Clear Cart</button>
+          {items.length>0 && (
+            <button className="px-2 py-1 text-sm text-white/80 hover:text-white underline underline-offset-2" type="button" onClick={clearCart} aria-label="Clear Cart">Clear Cart</button>
+          )}
         </div>
         <ul className="flex flex-col gap-2">
           {items.map(({item,qty})=> (

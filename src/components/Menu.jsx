@@ -273,7 +273,9 @@ const NonVegIcon = () => (
         </div>
         {cartTotal<200 && <div className="text-error text-xs mt-1">Minimum order is ₹200</div>}
         <button className={`btn w-full mt-2 ${appReason==='CLOSED_BY_OWNER' ? 'btn-disabled' : 'btn-primary'}`} disabled={appReason==='CLOSED_BY_OWNER'} onClick={handleProceed}>Proceed to Checkout</button>
-        <button className="btn w-full mt-2" type="button" onClick={()=>{ setCart({}); try{ localStorage.removeItem('hc_cart'); }catch{} }}>Clear Cart</button>
+        {cartTotal>0 && (
+          <button className="btn w-full mt-2" type="button" onClick={()=>{ setCart({}); try{ localStorage.removeItem('hc_cart'); }catch{} }}>Clear Cart</button>
+        )}
       </div>
     </main>
   );
