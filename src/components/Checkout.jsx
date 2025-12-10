@@ -72,9 +72,7 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
     const coord= geo || parseManualCoords(manualLink);
     if(!coord) return 50;
     const d=haversine(CAFE_LAT, CAFE_LNG, coord.lat, coord.lng);
-    if(d<=2) return 20;
-    if(d<=5) return 40;
-    return 80;
+    return d>5 ? 80 : 50;
   }
 
   const gst = Math.round(total*0.05);
