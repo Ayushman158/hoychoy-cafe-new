@@ -172,6 +172,9 @@ export default function Admin(){
               {[
                 '😔 Sorry, our restaurant is closed today. Online orders are available 12:00–9:00 PM.',
                 'We are closed today. Thank you for your support! 🫶',
+                'Delivery partners are currently unavailable. Please try again later.',
+                'We’re closing early today. Thank you for understanding.',
+                'Kitchen is taking a short break. We’ll be back soon.',
                 'Closed due to maintenance. We will be back soon ✨',
                 'Closed for a private event. See you tomorrow!',
                 'We will reopen tomorrow at 12:00 PM.',
