@@ -299,6 +299,37 @@ app.post('/api/admin/remove-item', requireAdmin, (req,res)=>{
   res.json({ok:true});
 });
 
+function parseCoordsFromUrl(u){
+  try{
+    const q=u.searchParams.get('q')||u.searchParams.get('ll')||u.searchParams.get('query');
+    let mm=q&&q.match(/^\s*(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)\s*$/);
+    if(mm) return {lat:Number(mm[1]),lng:Number(mm[2])};
+    const atMatch = u.pathname.match(/@(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)/);
+    if(atMatch) return {lat:Number(atMatch[1]),lng:Number(atMatch[2])};
+    return null;
+  }catch{return null}
+}
+
+app.post('/api/resolve-maps', async (req,res)=>{
+  try{
+    const { url } = req.body||{};
+    if(!url) return res.status(400).json({error:'url-required'});
+    const u = new URL(String(url));
+    const host=u.hostname.toLowerCase();
+    if(!(host.includes('google.com')||host.includes('goo.gl'))) return res.status(400).json({error:'unsupported-host'});
+    let coord = parseCoordsFromUrl(u);
+    if(coord) return res.json({coord});
+    const r = await fetch(String(url), {redirect:'follow'});
+    const finalUrl = r.url || String(url);
+    const uf = new URL(finalUrl);
+    coord = parseCoordsFromUrl(uf);
+    if(coord) return res.json({coord, finalUrl});
+    return res.status(400).json({error:'coords-not-found', finalUrl});
+  }catch(e){
+    return res.status(400).json({error:'invalid-url'});
+  }
+});
+
 app.post('/api/initiate-payment', async (req,res)=>{
   try{
     const { amount, orderId, customerPhone, customerName, redirectUrl, expireAfter } = req.body;

@@ -13,6 +13,7 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
   const [geo,setGeo]=useState(null);
   const [manualLink,setManualLink]=useState("");
   const [geoError,setGeoError]=useState("");
+  const [resolvedCoord,setResolvedCoord]=useState(null);
   const valid=name.trim()&&phone.replace(/\D/g,"").length===10&&address.trim()&&((!!geo)||isValidManualLink(manualLink));
   const upiIntent = buildUpiIntent(UPI_ID, total, MERCHANT_NAME, "Order at HoyChoy Café", `HC-${Date.now()}`);
   const [copied,setCopied]=useState(false);
@@ -79,7 +80,7 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
   }
 
   function calculateDeliveryFee(){
-    const coord= geo || parseManualCoords(manualLink);
+    const coord= geo || resolvedCoord || parseManualCoords(manualLink);
     if(!coord) return 50;
     const d=haversine(CAFE_LAT, CAFE_LNG, coord.lat, coord.lng);
     return d>5 ? 80 : 50;
@@ -122,6 +123,22 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
       window.location.href = tokenUrl;
     }
   }
+
+  useEffect(()=>{
+    setResolvedCoord(null);
+    const local = parseManualCoords(manualLink);
+    if(local){ setResolvedCoord(local); return; }
+    async function resolve(){
+      try{
+        if(isValidManualLink(manualLink)){
+          const r = await fetch(`${BACKEND_URL}/api/resolve-maps`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:manualLink})});
+          const d = await r.json();
+          if(r.ok && d.coord) setResolvedCoord(d.coord);
+        }
+      }catch{}
+    }
+    resolve();
+  },[manualLink]);
 
 
   return (
