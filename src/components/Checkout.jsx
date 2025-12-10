@@ -222,7 +222,7 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
           {geoError && <div className="text-error text-xs">{geoError}</div>}
           {!geo && <label className="flex flex-col gap-1"><span>Paste a Google Maps link or enter coordinates *</span>
             <input className="bg-[#111] border border-[#222] rounded-xl p-2" value={manualLink} onChange={e=>setManualLink(e.target.value)} placeholder="Paste a map link or type 27.2348,94.1101" />
-            {!isValidManualLink(manualLink) && <span className="text-error text-xs">Please enter a Google Maps link or coordinates like 27.2348,94.1101</span>}
+            {!isValidManualLink(manualLink) && <span className="text-error text-xs">Please enter your Google Maps link</span>}
             <button className="btn mt-2" type="button" onClick={resolveManual} disabled={resolving}>{resolving?"Calculating...":"Calculate Delivery Fee"}</button>
             {resolveMsg && <span className={`text-xs mt-1 ${resolveMsg.startsWith("✓")?"text-success":"text-error"}`}>{resolveMsg}{distance!=null?` • Distance: ${distance} km`:""}</span>}
           </label>}
