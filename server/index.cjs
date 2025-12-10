@@ -2,6 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { StandardCheckoutClient, Env } = require('pg-sdk-node');
 
 const app = express();
 app.use(express.json());
@@ -39,6 +40,16 @@ function createSession(){ const t=crypto.randomBytes(24).toString('hex'); const 
 function isValidSession(t){ const s=sessions.get(t); if(!s) return false; if(Date.now()>s.exp){ sessions.delete(t); return false; } return true; }
 
 let tokenCache = { token: '', expiresAt: 0 };
+let sdkClient = null;
+function getSdkClient(){
+  try{
+    if(!sdkClient){
+      const envObj = ENV==='PROD' ? Env.PRODUCTION : Env.SANDBOX;
+      sdkClient = StandardCheckoutClient.getInstance(CLIENT_ID, CLIENT_SECRET, CLIENT_VERSION || '4.0', envObj);
+    }
+  }catch{}
+  return sdkClient;
+}
 
 async function getAuthToken(){
   try{
@@ -72,7 +83,7 @@ function xVerify(hashInput){
 }
 
 async function phonepePay(payload){
-  const path = '/pg/checkout/v2/pay';
+  const path = '/checkout/v2/pay';
   const json = JSON.stringify(payload);
   const base64 = Buffer.from(json).toString('base64');
   const headers = {
