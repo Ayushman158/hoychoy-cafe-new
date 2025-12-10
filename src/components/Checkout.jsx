@@ -182,7 +182,10 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
     <section className="max-w-[600px] mx-auto px-4">
       <div className="flex items-center gap-2"><button className="btn" onClick={onBack}>←</button><div className="font-bold">Cart & Checkout</div></div>
       <div className="card mt-3">
-        <div className="section-title">Your Order</div>
+        <div className="section-title flex items-center justify-between">
+          <span>Your Order</span>
+          <button className="px-2 py-1 rounded-md bg-[#2a2a2a] border border-[#3a3a3a]" type="button" onClick={clearCart}>Clear Cart</button>
+        </div>
         <ul className="flex flex-col gap-2">
           {items.map(({item,qty})=> (
             <li key={item.id} className="row">
@@ -196,8 +199,6 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
             </li>
           ))}
         </ul>
-        <div className="border-t border-[#222] my-2"/>
-        <button className="btn" type="button" onClick={clearCart}>Clear Cart</button>
         <div className="border-t border-[#222] my-2"/>
         <div className="row"><span>Subtotal</span><span className="price">₹{total}</span></div>
         <div className="row"><span>GST (5%)</span><span className="price">₹{gst}</span></div>
