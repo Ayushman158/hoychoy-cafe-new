@@ -25,6 +25,7 @@ const CLIENT_ID = process.env.PHONEPE_CLIENT_ID || '';
 const CLIENT_SECRET = process.env.PHONEPE_CLIENT_SECRET || '';
 const CLIENT_VERSION = process.env.PHONEPE_CLIENT_VERSION || '';
 const ACCESS_CODE = process.env.PHONEPE_ACCESS_CODE || '';
+const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || 'https://www.hoychoycafe.com';
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'hoychoycafe@gmail.com';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'h0ych0ycafe123';
 const MIN_ORDER_RUPEES = Number(process.env.MIN_ORDER_RUPEES||200);
@@ -344,7 +345,7 @@ app.post('/api/resolve-maps', async (req,res)=>{
 
 app.post('/api/initiate-payment', async (req,res)=>{
   try{
-    const { amount, orderId, customerPhone, customerName, redirectUrl, expireAfter } = req.body;
+    const { amount, orderId, customerPhone, customerName, expireAfter } = req.body;
     if(!amount || !orderId) return res.status(400).json({error:'amount and orderId required'});
     if(Number(amount) < MIN_ORDER_RUPEES) return res.status(400).json({error:'min-order-amount', min:MIN_ORDER_RUPEES});
     const client = getSdkClient();
@@ -357,7 +358,7 @@ app.post('/api/initiate-payment', async (req,res)=>{
     const request = StandardCheckoutPayRequest.builder()
       .merchantOrderId(String(orderId))
       .amount(paisa)
-      .redirectUrl(String(redirectUrl||''))
+      .redirectUrl(String(`${PUBLIC_BASE_URL}/?merchantTransactionId=${orderId}`))
       .metaInfo(metaInfo)
       .build();
     const response = await client.pay(request);
@@ -373,8 +374,8 @@ app.post('/api/initiate-payment', async (req,res)=>{
 
 app.post('/api/create-sdk-order', async (req,res)=>{
   try{
-    const { amount, orderId, redirectUrl } = req.body||{};
-    if(!amount || !orderId || !redirectUrl) return res.status(400).json({error:'missing-fields'});
+    const { amount, orderId } = req.body||{};
+    if(!amount || !orderId) return res.status(400).json({error:'missing-fields'});
     if(Number(amount) < MIN_ORDER_RUPEES) return res.status(400).json({error:'min-order-amount', min:MIN_ORDER_RUPEES});
     const client = getSdkClient();
     if(!client) return res.status(500).json({error:'sdk-not-configured'});
@@ -382,7 +383,7 @@ app.post('/api/create-sdk-order', async (req,res)=>{
     const request = CreateSdkOrderRequest.StandardCheckoutBuilder()
       .merchantOrderId(String(orderId))
       .amount(paisa)
-      .redirectUrl(String(redirectUrl))
+      .redirectUrl(String(`${PUBLIC_BASE_URL}/?merchantTransactionId=${orderId}`))
       .build();
     const response = await client.createSdkOrder(request);
     const token = response?.token || null;
