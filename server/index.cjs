@@ -303,10 +303,10 @@ function parseCoordsFromUrl(u){
   try{
     const q=u.searchParams.get('q')||u.searchParams.get('ll')||u.searchParams.get('query');
     let mm=q&&q.match(/^\s*(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)\s*$/);
-    if(mm) return {lat:Number(mm[1]),lng:Number(mm[2])};
+    if(mm) return {lat:Number(mm[1]),lng:Number(mm[2]), q};
     const atMatch = u.pathname.match(/@(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)/);
-    if(atMatch) return {lat:Number(atMatch[1]),lng:Number(atMatch[2])};
-    return null;
+    if(atMatch) return {lat:Number(atMatch[1]),lng:Number(atMatch[2]), q};
+    return {q};
   }catch{return null}
 }
 
@@ -317,13 +317,25 @@ app.post('/api/resolve-maps', async (req,res)=>{
     const u = new URL(String(url));
     const host=u.hostname.toLowerCase();
     if(!(host.includes('google.com')||host.includes('goo.gl'))) return res.status(400).json({error:'unsupported-host'});
-    let coord = parseCoordsFromUrl(u);
-    if(coord) return res.json({coord});
+    let parsed = parseCoordsFromUrl(u);
+    if(parsed && parsed.lat!=null && parsed.lng!=null) return res.json({coord:{lat:parsed.lat,lng:parsed.lng}});
     const r = await fetch(String(url), {redirect:'follow'});
     const finalUrl = r.url || String(url);
     const uf = new URL(finalUrl);
-    coord = parseCoordsFromUrl(uf);
-    if(coord) return res.json({coord, finalUrl});
+    parsed = parseCoordsFromUrl(uf);
+    if(parsed && parsed.lat!=null && parsed.lng!=null) return res.json({coord:{lat:parsed.lat,lng:parsed.lng}, finalUrl});
+    const qStr = parsed && parsed.q ? parsed.q : null;
+    if(qStr){
+      try{
+        const geo = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(qStr)}`,{headers:{'User-Agent':'HoyChoyCafe/1.0'}});
+        const arr = await geo.json();
+        if(Array.isArray(arr) && arr.length){
+          const item = arr[0];
+          const lat = Number(item.lat), lng = Number(item.lon);
+          if(Number.isFinite(lat)&&Number.isFinite(lng)) return res.json({coord:{lat,lng}, provider:'osm'});
+        }
+      }catch{}
+    }
     return res.status(400).json({error:'coords-not-found', finalUrl});
   }catch(e){
     return res.status(400).json({error:'invalid-url'});
