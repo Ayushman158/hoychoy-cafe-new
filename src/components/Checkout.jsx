@@ -184,7 +184,7 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
       <div className="card mt-3">
         <div className="section-title flex items-center justify-between">
           <span>Your Order</span>
-          <button className="px-2 py-1 rounded-md bg-[#2a2a2a] border border-[#3a3a3a]" type="button" onClick={clearCart}>Clear Cart</button>
+          <button className="px-2 py-1 text-sm text-white/80 hover:text-white" type="button" onClick={clearCart}>Clear Cart</button>
         </div>
         <ul className="flex flex-col gap-2">
           {items.map(({item,qty})=> (
