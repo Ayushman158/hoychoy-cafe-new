@@ -180,7 +180,7 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
 
   return (
     <section className="max-w-[600px] mx-auto px-4">
-      <div className="flex items-center gap-2"><button className="btn" onClick={onBack}>←</button><div className="font-bold">Cart & Checkout</div></div>
+      <div className="flex items-center gap-2 mt-3"><button className="btn" onClick={onBack}>←</button><div className="font-bold">Cart & Checkout</div></div>
       <div className="card mt-3">
         <div className="section-title flex items-center justify-between">
           <span>Your Order</span>
