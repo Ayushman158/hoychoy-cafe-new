@@ -140,7 +140,7 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
       const local = parseManualCoords(manualLink);
       if(local){
         setResolvedCoord(local);
-        setResolveMsg("Location updated");
+        setResolveMsg("✓ Location updated");
         setResolving(false);
         return;
       }
@@ -149,15 +149,15 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
         const d = await r.json();
         if(r.ok && d.coord){
           setResolvedCoord(d.coord);
-          setResolveMsg("Location updated");
+          setResolveMsg("✓ Location updated");
         }else{
-          setResolveMsg("Could not read map link");
+          setResolveMsg("We couldn’t read that map link. Please try copying the full link.");
         }
       }else{
-        setResolveMsg("Enter a valid map link or lat,lng");
+        setResolveMsg("Please enter a map link or coordinates like 27.2348,94.1101");
       }
     }catch{
-      setResolveMsg("Could not update location");
+      setResolveMsg("We couldn’t update your location. Please check your connection and try again.");
     }
     setResolving(false);
   }
@@ -216,18 +216,18 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
         <label className="flex flex-col gap-1 my-2"><span>Delivery Address *</span><textarea className="bg-[#111] border border-[#222] rounded-xl p-2 min-h-[80px]" value={address} onChange={e=>setAddress(e.target.value)} />{!address.trim()&&<span className="text-error text-xs mt-1">Address is required</span>}</label>
         <label className="flex flex-col gap-1 my-2"><span>Order Notes (optional)</span><textarea className="bg-[#111] border border-[#222] rounded-xl p-2 min-h-[60px]" value={note} onChange={e=>setNote(e.target.value)} placeholder="e.g., Please add less salt / ring the doorbell once" /></label>
         <div className="flex flex-col gap-2">
-          <div>Share Your Exact Location (Required)</div>
-          <button className="btn w-full" onClick={capture}>Use My Current Location</button>
-          <div className="text-success text-xs">{geo?"✓ Location captured - Ready for accurate delivery!":""}</div>
+          <div>Share your exact location</div>
+          <button className="btn w-full" onClick={capture}>Use my current location</button>
+          <div className="text-success text-xs">{geo?"✓ Location captured":""}</div>
           {geoError && <div className="text-error text-xs">{geoError}</div>}
-          {!geo && <label className="flex flex-col gap-1"><span>Or paste Google Maps link or coordinates *</span>
-            <input className="bg-[#111] border border-[#222] rounded-xl p-2" value={manualLink} onChange={e=>setManualLink(e.target.value)} placeholder="https://maps.google.com/?q=lat,lng or 27.2348,94.1101" />
-            {!isValidManualLink(manualLink) && <span className="text-error text-xs">Valid map link or lat,lng required</span>}
-            <button className="btn mt-2" type="button" onClick={resolveManual} disabled={resolving}>{resolving?"Updating...":"Update Delivery Fee"}</button>
-            {resolveMsg && <span className={`text-xs mt-1 ${resolveMsg.includes("updated")?"text-success":"text-error"}`}>{resolveMsg}{distance!=null?` • Distance: ${distance} km`:""}</span>}
+          {!geo && <label className="flex flex-col gap-1"><span>Paste a Google Maps link or enter coordinates *</span>
+            <input className="bg-[#111] border border-[#222] rounded-xl p-2" value={manualLink} onChange={e=>setManualLink(e.target.value)} placeholder="Paste a map link or type 27.2348,94.1101" />
+            {!isValidManualLink(manualLink) && <span className="text-error text-xs">Please enter a Google Maps link or coordinates like 27.2348,94.1101</span>}
+            <button className="btn mt-2" type="button" onClick={resolveManual} disabled={resolving}>{resolving?"Calculating...":"Calculate Delivery Fee"}</button>
+            {resolveMsg && <span className={`text-xs mt-1 ${resolveMsg.startsWith("✓")?"text-success":"text-error"}`}>{resolveMsg}{distance!=null?` • Distance: ${distance} km`:""}</span>}
           </label>}
         </div>
-        <div className="text-muted text-xs mt-1">We'll use your location only for this delivery.</div>
+        <div className="text-muted text-xs mt-1">We use your location only for this order.</div>
       </div>
 
       <div className="card mt-3">

@@ -137,7 +137,7 @@ const NonVegIcon = () => (
   function add(id){
   console.log('Adding item to cart:', id);
   console.log('Current cart:', cart);setCart(c=>({...c,[id]:(c[id]||0)+1}));setJustAdded(id);setTimeout(()=>setJustAdded(null),1000);} 
-  function handleProceed(){ if(cartTotal<200){ alert('Minimum order is ₹200'); return; } onProceed(); }
+  function handleProceed(){ if(cartTotal<200){ alert('Your order total is below ₹200. Please add more items to continue.'); return; } onProceed(); }
 
   return (
     <main className="max-w-[600px] mx-auto px-4 pb-40">
