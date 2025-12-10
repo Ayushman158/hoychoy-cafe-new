@@ -137,7 +137,7 @@ const NonVegIcon = () => (
   function add(id){
   console.log('Adding item to cart:', id);
   console.log('Current cart:', cart);setCart(c=>({...c,[id]:(c[id]||0)+1}));setJustAdded(id);setTimeout(()=>setJustAdded(null),1000);} 
-  function handleProceed(){ if(cartTotal<200) alert('Minimum order is ₹200'); onProceed(); }
+  function handleProceed(){ if(cartTotal<200){ alert('Minimum order is ₹200'); return; } onProceed(); }
 
   return (
     <main className="max-w-[600px] mx-auto px-4 pb-40">
@@ -282,7 +282,7 @@ const NonVegIcon = () => (
           <span>Total</span><span className="price">₹{cartTotal}</span>
         </div>
         {cartTotal<200 && <div className="text-error text-xs mt-1">Minimum order is ₹200</div>}
-        <button className={`btn w-full mt-2 ${appReason==='CLOSED_BY_OWNER' ? 'btn-disabled' : 'btn-primary'}`} disabled={appReason==='CLOSED_BY_OWNER'} onClick={handleProceed}>Proceed to Checkout</button>
+        <button className={`btn w-full mt-2 ${(appReason==='CLOSED_BY_OWNER' || cartTotal<200) ? 'btn-disabled' : 'btn-primary'}`} disabled={appReason==='CLOSED_BY_OWNER' || cartTotal<200} onClick={handleProceed}>Proceed to Checkout</button>
         {cartTotal>0 && (
           <button className="btn w-full mt-2" type="button" onClick={()=>{ setCart({}); try{ localStorage.removeItem('hc_cart'); }catch{} }}>Clear Cart</button>
         )}
