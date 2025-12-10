@@ -2,7 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const { StandardCheckoutClient, Env, MetaInfo, StandardCheckoutPayRequest } = require('pg-sdk-node');
+const { StandardCheckoutClient, Env, MetaInfo, StandardCheckoutPayRequest, CreateSdkOrderRequest } = require('pg-sdk-node');
 
 const app = express();
 app.use(express.json());
@@ -296,6 +296,29 @@ app.post('/api/initiate-payment', async (req,res)=>{
     if(!url) return res.status(500).json({error:'phonepe-init-failed', details:response});
     payments.set(orderId, {status:'PENDING', amount});
     return res.json({redirectUrl:url, orderId});
+  }catch(e){
+    return res.status(500).json({error:'server-error', message:String(e)});
+  }
+});
+
+app.post('/api/create-sdk-order', async (req,res)=>{
+  try{
+    const { amount, orderId, redirectUrl } = req.body||{};
+    if(!amount || !orderId || !redirectUrl) return res.status(400).json({error:'missing-fields'});
+    if(Number(amount) < 200) return res.status(400).json({error:'min-order-amount'});
+    const client = getSdkClient();
+    if(!client) return res.status(500).json({error:'sdk-not-configured'});
+    const paisa = Math.round(Number(amount)*100);
+    const request = CreateSdkOrderRequest.StandardCheckoutBuilder()
+      .merchantOrderId(String(orderId))
+      .amount(paisa)
+      .redirectUrl(String(redirectUrl))
+      .build();
+    const response = await client.createSdkOrder(request);
+    const token = response?.token || null;
+    if(!token) return res.status(500).json({error:'create-sdk-order-failed', details:response});
+    payments.set(orderId, {status:'PENDING', amount});
+    return res.json({token, orderId});
   }catch(e){
     return res.status(500).json({error:'server-error', message:String(e)});
   }
