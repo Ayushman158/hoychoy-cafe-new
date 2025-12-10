@@ -5,7 +5,7 @@ const path = require('path');
 const { StandardCheckoutClient, Env, MetaInfo, StandardCheckoutPayRequest, CreateSdkOrderRequest, RefundRequest } = require('pg-sdk-node');
 
 const app = express();
-app.use(express.json());
+app.use(express.json({verify:(req,res,buf)=>{try{req.rawBody=buf.toString('utf8');}catch{}}}));
 
 app.use((req,res,next)=>{
   res.header('Access-Control-Allow-Origin','*');
@@ -351,10 +351,27 @@ app.post('/api/create-sdk-order', async (req,res)=>{
 app.post('/api/payment-callback', (req,res)=>{
   try{
     const { merchantTransactionId, transactionId, state } = req.body || {};
-    if(merchantTransactionId){
-      payments.set(merchantTransactionId, {status:state, transactionId});
+    const client = getSdkClient();
+    const auth = req.headers['authorization']||'';
+    const cbUser = process.env.PHONEPE_CB_USER||'';
+    const cbPass = process.env.PHONEPE_CB_PASS||'';
+    if(client && cbUser && cbPass && auth && req.rawBody){
+      try{
+        const validated = client.validateCallback(cbUser, cbPass, auth, req.rawBody);
+        const payload = validated?.payload||{};
+        const orderId = String(payload.originalMerchantOrderId||payload.orderId||merchantTransactionId||'');
+        const txn = String(payload.transactionId||transactionId||'');
+        const st = String(payload.state||state||'PENDING');
+        if(orderId){ payments.set(orderId, {status:st, transactionId:txn}); }
+        return res.json({ok:true, state:st});
+      }catch(e){
+        if(merchantTransactionId){ payments.set(merchantTransactionId, {status:state, transactionId}); }
+        return res.json({ok:true, state});
+      }
+    }else{
+      if(merchantTransactionId){ payments.set(merchantTransactionId, {status:state, transactionId}); }
+      return res.json({ok:true, state});
     }
-    res.json({ok:true});
   }catch{
     res.status(500).json({error:'callback-error'});
   }
