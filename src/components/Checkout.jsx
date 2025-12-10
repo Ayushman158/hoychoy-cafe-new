@@ -42,7 +42,15 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
     if(!s) return false;
     const coord=/^\s*-?\d{1,2}\.\d+\s*,\s*-?\d{1,3}\.\d+\s*$/;
     if(coord.test(s)) return true;
-    try{const u=new URL(s);return /maps\.google\.com|google\.com\/maps/.test(u.hostname+u.pathname);}catch{return false}
+    try{
+      const u=new URL(s);
+      const host=u.hostname.toLowerCase();
+      const path=u.pathname.toLowerCase();
+      if(host.includes('google.com')||host.includes('maps.google.com')||host.includes('maps.app.goo.gl')||host.includes('goo.gl')){
+        return true;
+      }
+      return /google\.com\/maps/.test(host+path);
+    }catch{return false}
   }
 
   function parseManualCoords(str){
@@ -51,9 +59,11 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
       const m=s.match(/^\s*(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)\s*$/);
       if(m) return {lat:Number(m[1]),lng:Number(m[2])};
       const u=new URL(s);
-      const q=u.searchParams.get('q');
+      const q=u.searchParams.get('q')||u.searchParams.get('ll')||u.searchParams.get('query');
       const mm=q&&q.match(/^\s*(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)\s*$/);
       if(mm) return {lat:Number(mm[1]),lng:Number(mm[2])};
+      const atMatch = u.pathname.match(/@(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)/);
+      if(atMatch) return {lat:Number(atMatch[1]),lng:Number(atMatch[2])};
       return null;
     }catch{return null}
   }
