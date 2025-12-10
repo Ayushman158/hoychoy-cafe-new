@@ -351,6 +351,23 @@ app.get('/api/payment-status/:id', async (req,res)=>{
   }
 });
 
+app.get('/api/order-status/:id', async (req,res)=>{
+  try{
+    const orderId = req.params.id;
+    const client = getSdkClient();
+    if(!client) return res.status(500).json({error:'sdk-not-configured'});
+    const response = await client.getOrderStatus(String(orderId));
+    const status = response?.state || 'PENDING';
+    const list = Array.isArray(response?.payment_details) ? response.payment_details : [];
+    const latest = list.length ? list[list.length-1] : null;
+    const transactionId = latest?.transactionId || null;
+    payments.set(orderId, {status, transactionId});
+    res.json({status, transactionId, order: response});
+  }catch(e){
+    res.status(500).json({error:'sdk-order-status-failed', message:String(e)});
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, ()=>{
   console.log(`PhonePe server listening on http://localhost:${PORT}`);

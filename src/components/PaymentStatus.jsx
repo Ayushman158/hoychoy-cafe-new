@@ -14,12 +14,18 @@ export default function PaymentStatus(){
     async function check(){
       if(!id){setError('Missing transaction id');return;}
       try{
-        const resp = await fetch(`${BACKEND_URL}/api/payment-status/${id}`);
-        const data = await resp.json();
-        if(!resp.ok){setError('Could not verify payment');return;}
+        // Try SDK order status first (merchantOrderId)
+        let resp = await fetch(`${BACKEND_URL}/api/order-status/${id}`);
+        let data = await resp.json();
+        if(!resp.ok){
+          // Fallback to REST payment status (merchantTransactionId)
+          resp = await fetch(`${BACKEND_URL}/api/payment-status/${id}`);
+          data = await resp.json();
+          if(!resp.ok){ setError('Could not verify payment'); return; }
+        }
         setStatus(data.status||'PENDING');
         setTxnId(data.transactionId||id);
-        if(data.status==='SUCCESS') localStorage.setItem('pp_paid','SUCCESS');
+        if(data.status==='SUCCESS' || data.status==='COMPLETED') localStorage.setItem('pp_paid','SUCCESS');
         else localStorage.setItem('pp_paid', data.status||'PENDING');
       }catch(e){setError('Network error while verifying payment');}
     }
