@@ -185,7 +185,7 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
         </label>
         {!canOrder && <div className="text-error text-xs mb-2">Minimum order is ₹{minOrder}</div>}
         <button className={`btn btn-primary w-full`} onClick={payNow}>Pay ₹{grandTotal}</button>
-        {typeof window!=='undefined' && (window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1') && (
+        {typeof window!=='undefined' && ((window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1') || new URLSearchParams(window.location.search).get('testpay')==='1') && (
           <button className={`btn w-full mt-2`} onClick={payTest1}>Test Pay ₹1</button>
         )}
         <div className="text-muted text-xs mt-2">You will be redirected to PhonePe to complete payment.</div>
