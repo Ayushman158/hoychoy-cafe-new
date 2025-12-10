@@ -74,7 +74,6 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
     const d=haversine(CAFE_LAT, CAFE_LNG, coord.lat, coord.lng);
     if(d<=2) return 20;
     if(d<=5) return 40;
-    if(d<=8) return 60;
     return 80;
   }
 
