@@ -7,6 +7,7 @@ import { buildUpiIntent } from "../utils/upi";
 export default function Checkout({cart, setCart, onBack, onSubmit}){
   const items=useMemo(()=>Object.entries(cart).map(([id,q])=>{const it=data.items.find(x=>x.id===id);return it?{item:it,qty:q}:null;}).filter(Boolean),[cart]);
   const total = items.reduce((s, x) => s + x.item.price * x.qty, 0);
+  const minOrder = (()=>{ try{ const v=localStorage.getItem('hc_min_order_rupees'); return v?Number(v):200; }catch{return 200;} })();
   const [name,setName]=useState("");
   const [phone,setPhone]=useState("");
   const [address,setAddress]=useState("");
@@ -81,13 +82,13 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
   const gst = Math.round(total*0.05);
   const deliveryFee = calculateDeliveryFee();
   const grandTotal = total + gst + deliveryFee;
-  const canOrder = total >= 200;
+  const canOrder = total >= minOrder;
 
   function submit(){onSubmit({name,phone,address,geo,manualLink:manualLink.trim(),total,items,gst,deliveryFee,grandTotal});}
 
   async function payNow(){
     if(!canOrder){
-      alert('Minimum order is ₹200. Please add more items before paying.');
+      alert(`Minimum order is ₹${minOrder}. Please add more items before paying.`);
       return;
     }
     const orderId = `HC-${generateOrderId()}-${Date.now()}`;
@@ -114,6 +115,23 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
     }else{
       window.location.href = tokenUrl;
     }
+  }
+
+  async function payTest1(){
+    const orderId = `HC-${generateOrderId()}-${Date.now()}`;
+    const redirectUrl = `${window.location.origin}/?merchantTransactionId=${orderId}`;
+    const callbackUrl = `${BACKEND_URL}/api/payment-callback`;
+    const resp = await fetch(`${BACKEND_URL}/api/initiate-payment`,{
+      method:'POST',headers:{'Content-Type':'application/json','X-Test-Payment':'1'},
+      body:JSON.stringify({amount:1, orderId, customerPhone:phone, customerName:name, redirectUrl, callbackUrl})
+    });
+    const data = await resp.json();
+    if(!resp.ok || !data.redirectUrl){ alert('Could not start PhonePe test payment'); return; }
+    localStorage.setItem('pp_last_txn', orderId);
+    localStorage.setItem('hc_cust', JSON.stringify({name,phone,address,geo,manualLink:manualLink.trim(),items,total,gst,deliveryFee,grandTotal}));
+    const tokenUrl = data.redirectUrl;
+    const cb = (response)=>{ if(response==='USER_CANCEL'){ return; } window.location.href = `/?merchantTransactionId=${orderId}`; };
+    if(window && window.PhonePeCheckout && window.PhonePeCheckout.transact){ window.PhonePeCheckout.transact({ tokenUrl, callback: cb, type: 'IFRAME' }); } else { window.location.href = tokenUrl; }
   }
 
   return (
@@ -165,8 +183,11 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
           <input type="checkbox" className="w-4 h-4" checked={agree} onChange={e=>setAgree(e.target.checked)} />
           <span>I agree to the <a href="/terms" className="text-[#f5c84a] underline">Terms & Conditions</a></span>
         </label>
-        {!canOrder && <div className="text-error text-xs mb-2">Minimum order is ₹200</div>}
+        {!canOrder && <div className="text-error text-xs mb-2">Minimum order is ₹{minOrder}</div>}
         <button className={`btn btn-primary w-full`} onClick={payNow}>Pay ₹{grandTotal}</button>
+        {typeof window!=='undefined' && (window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1') && (
+          <button className={`btn w-full mt-2`} onClick={payTest1}>Test Pay ₹1</button>
+        )}
         <div className="text-muted text-xs mt-2">You will be redirected to PhonePe to complete payment.</div>
       </div>
       <div className="mt-4 mb-6">

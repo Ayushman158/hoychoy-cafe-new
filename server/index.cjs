@@ -27,6 +27,7 @@ const CLIENT_VERSION = process.env.PHONEPE_CLIENT_VERSION || '';
 const ACCESS_CODE = process.env.PHONEPE_ACCESS_CODE || '';
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'hoychoycafe@gmail.com';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'h0ych0ycafe123';
+const MIN_ORDER_RUPEES = Number(process.env.MIN_ORDER_RUPEES||200);
 
 const OV_PATH = path.join(__dirname, 'data', 'overrides.json');
 function ensureDir(){try{fs.mkdirSync(path.dirname(OV_PATH),{recursive:true});}catch{}}
@@ -302,7 +303,9 @@ app.post('/api/initiate-payment', async (req,res)=>{
   try{
     const { amount, orderId, customerPhone, customerName, redirectUrl, expireAfter } = req.body;
     if(!amount || !orderId) return res.status(400).json({error:'amount and orderId required'});
-    if(Number(amount) < 200) return res.status(400).json({error:'min-order-amount'});
+    const isTest = (req.headers['x-test-payment']==='1') || (process.env.TEST_MODE==='1');
+    const minTh = isTest ? 1 : MIN_ORDER_RUPEES;
+    if(Number(amount) < minTh) return res.status(400).json({error:'min-order-amount', min:minTh});
     const client = getSdkClient();
     if(!client) return res.status(500).json({error:'sdk-not-configured'});
     const paisa = Math.round(Number(amount)*100);
@@ -331,7 +334,9 @@ app.post('/api/create-sdk-order', async (req,res)=>{
   try{
     const { amount, orderId, redirectUrl } = req.body||{};
     if(!amount || !orderId || !redirectUrl) return res.status(400).json({error:'missing-fields'});
-    if(Number(amount) < 200) return res.status(400).json({error:'min-order-amount'});
+    const isTest2 = (req.headers['x-test-payment']==='1') || (process.env.TEST_MODE==='1');
+    const minTh2 = isTest2 ? 1 : MIN_ORDER_RUPEES;
+    if(Number(amount) < minTh2) return res.status(400).json({error:'min-order-amount', min:minTh2});
     const client = getSdkClient();
     if(!client) return res.status(500).json({error:'sdk-not-configured'});
     const paisa = Math.round(Number(amount)*100);
