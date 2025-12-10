@@ -32,13 +32,9 @@ export default function App(){
   useEffect(()=>{
     const params = new URLSearchParams(window.location.search);
     const id = params.get('merchantTransactionId');
-    const min = params.get('min');
     if(id){
       setReturnTxn(id);
       setView('payment');
-    }
-    if(min){
-      try{ localStorage.setItem('hc_min_order_rupees', String(Math.max(1, Number(min)||200))); }catch{}
     }
     const p = window.location.pathname.replace(/^\/+/,"");
     if(['privacy','terms','refund','shipping','about','reserve','admin'].includes(p)){
