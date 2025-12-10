@@ -38,7 +38,8 @@ function loadOverrides(){
 function saveOverrides(obj){ try{ ensureDir(); fs.writeFileSync(OV_PATH, JSON.stringify(obj,null,2)); }catch{} }
 let overrides = loadOverrides();
 const sessions = new Map();
-function createSession(){ const t=crypto.randomBytes(24).toString('hex'); const exp=Date.now()+24*60*60*1000; sessions.set(t,{exp}); return t; }
+const ADMIN_TOKEN_TTL_HOURS = Number(process.env.ADMIN_TOKEN_TTL_HOURS||24);
+function createSession(){ const t=crypto.randomBytes(24).toString('hex'); const exp=Date.now()+ADMIN_TOKEN_TTL_HOURS*60*60*1000; sessions.set(t,{exp}); return t; }
 function isValidSession(t){ const s=sessions.get(t); if(!s) return false; if(Date.now()>s.exp){ sessions.delete(t); return false; } return true; }
 
 let tokenCache = { token: '', expiresAt: 0 };
@@ -159,14 +160,29 @@ function requireAdmin(req,res,next){
 app.post('/api/admin/login', (req,res)=>{
   const { email, password } = req.body||{};
   if(!ADMIN_EMAIL || !ADMIN_PASSWORD) return res.status(500).json({error:'admin-not-configured'});
-  if(email===ADMIN_EMAIL && password===ADMIN_PASSWORD){ const token=createSession(); return res.json({ok:true, token}); }
+  const cid = getClientId(req);
+  const rec = loginAttempts.get(cid)||{count:0, blockedUntil:0};
+  if(rec.blockedUntil && Date.now()<rec.blockedUntil){
+    const retryAt = rec.blockedUntil;
+    return res.status(429).json({error:'rate_limited', retryAt});
+  }
+  if(email===ADMIN_EMAIL && password===ADMIN_PASSWORD){
+    loginAttempts.delete(cid);
+    const token=createSession();
+    return res.json({ok:true, token});
+  }
+  rec.count = (rec.count||0)+1;
+  if(rec.count>=5){ rec.blockedUntil = Date.now()+10*60*1000; rec.count=0; }
+  loginAttempts.set(cid, rec);
   return res.status(401).json({error:'invalid-credentials'});
 });
 
 app.get('/api/admin/me', (req,res)=>{
   const hdr = req.headers['authorization']||'';
   const tok = hdr.startsWith('Bearer ') ? hdr.slice(7) : hdr;
-  return res.json({authed:isValidSession(tok)});
+  const ok = isValidSession(tok);
+  if(ok){ const s=sessions.get(tok); if(s) s.exp=Date.now()+ADMIN_TOKEN_TTL_HOURS*60*60*1000; }
+  return res.json({authed:ok});
 });
 
 app.get('/api/menu-overrides', (req,res)=>{
@@ -526,3 +542,10 @@ app.post('/api/admin/order-delivered', requireAdmin, (req,res)=>{
     return res.status(500).json({error:'server-error'});
   }
 });
+const loginAttempts = new Map();
+function getClientId(req){
+  try{
+    const xf = (req.headers['x-forwarded-for']||'').split(',')[0].trim();
+    return xf || req.ip || 'unknown';
+  }catch{ return 'unknown'; }
+}

@@ -7,6 +7,8 @@ export default function Admin(){
   const [authed,setAuthed]=useState(false);
   const [email,setEmail]=useState('');
   const [password,setPassword]=useState('');
+  const [showPwd,setShowPwd]=useState(false);
+  const [logging,setLogging]=useState(false);
   const [status,setStatus]=useState({open:true,reason:'OPEN'});
   const [items,setItems]=useState(()=>getMenu().items||[]);
   const categories = useMemo(()=>{
@@ -54,14 +56,23 @@ export default function Admin(){
   function logout(){ localStorage.removeItem('hc_admin_token'); setToken(''); setAuthed(false); setMsg('Logged out'); }
 
   async function login(e){
-    e.preventDefault(); setMsg("");
+    e.preventDefault(); setMsg(""); setLogging(true);
     try{
       const r=await fetch(`${BACKEND_URL}/api/admin/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})});
       const d=await r.json();
-      if(!r.ok || !d.token){ setMsg('Invalid credentials'); return; }
+      if(!r.ok || !d.token){
+        if(d && d.error==='rate_limited' && d.retryAt){
+          const secs = Math.max(0, Math.ceil((d.retryAt - Date.now())/1000));
+          setMsg(`Too many attempts. Try again in ${secs} seconds.`);
+        }else{
+          setMsg('Invalid credentials');
+        }
+        return;
+      }
       localStorage.setItem('hc_admin_token', d.token);
       setToken(d.token); setAuthed(true); setMsg('Logged in');
     }catch{ setMsg('Network error'); }
+    setLogging(false);
   }
 
   async function refreshStatus(){
@@ -139,8 +150,11 @@ export default function Admin(){
           <div className="section-title">Admin Login</div>
           <form onSubmit={login} className="flex flex-col gap-2">
             <input className="bg-[#111] border border-[#222] rounded-xl p-2" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} />
-            <input className="bg-[#111] border border-[#222] rounded-xl p-2" placeholder="Password" type="password" value={password} onChange={e=>setPassword(e.target.value)} />
-            <button className="btn btn-primary" type="submit">Login</button>
+            <div className="flex items-center gap-2">
+              <input className="flex-1 bg-[#111] border border-[#222] rounded-xl p-2" placeholder="Password" type={showPwd?'text':'password'} value={password} onChange={e=>setPassword(e.target.value)} />
+              <button type="button" className="btn" onClick={()=>setShowPwd(v=>!v)}>{showPwd?'Hide':'Show'}</button>
+            </div>
+            <button className={`btn btn-primary ${logging?'btn-disabled':''}`} type="submit" disabled={logging}>Login</button>
           </form>
         </div>
       )}
