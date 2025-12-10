@@ -32,6 +32,7 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
 
   function dec(id){setCart(c=>{const v=(c[id]||0)-1;const n={...c};if(v<=0) delete n[id]; else n[id]=v;return n;});}
   function inc(id){console.log('Incrementing item in cart:', id);console.log('Current cart:', cart);setCart(c=>({...c,[id]:(c[id]||0)+1}));}
+  function clearCart(){ setCart({}); try{ localStorage.removeItem('hc_cart'); }catch{} }
 
   async function capture(){
     setGeoError("");
@@ -195,6 +196,8 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
             </li>
           ))}
         </ul>
+        <div className="border-t border-[#222] my-2"/>
+        <button className="btn" type="button" onClick={clearCart}>Clear Cart</button>
         <div className="border-t border-[#222] my-2"/>
         <div className="row"><span>Subtotal</span><span className="price">₹{total}</span></div>
         <div className="row"><span>GST (5%)</span><span className="price">₹{gst}</span></div>
