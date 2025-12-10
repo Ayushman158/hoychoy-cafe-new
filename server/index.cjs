@@ -2,7 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const { StandardCheckoutClient, Env, MetaInfo, StandardCheckoutPayRequest, CreateSdkOrderRequest } = require('pg-sdk-node');
+const { StandardCheckoutClient, Env, MetaInfo, StandardCheckoutPayRequest, CreateSdkOrderRequest, RefundRequest } = require('pg-sdk-node');
 
 const app = express();
 app.use(express.json());
@@ -238,8 +238,20 @@ app.post('/api/admin/refund', requireAdmin, async (req,res)=>{
     const { orderId, amount } = req.body||{};
     if(!orderId || amount==null) return res.status(400).json({error:'invalid-refund-request'});
     const pay = payments.get(orderId);
-    if(!pay || String(pay.status)!=='SUCCESS'){
+    if(!pay || (String(pay.status)!=='SUCCESS' && String(pay.status)!=='COMPLETED')){
       return res.status(400).json({error:'payment-not-verified'});
+    }
+    const client = getSdkClient();
+    if(client){
+      const refundId = crypto.randomBytes(16).toString('hex');
+      const paisa = Math.round(Number(amount)*100);
+      const request = RefundRequest.builder()
+        .amount(paisa)
+        .merchantRefundId(refundId)
+        .originalMerchantOrderId(String(orderId))
+        .build();
+      const response = await client.refund(request);
+      return res.json({ok:true, refundId, state:response?.state||'PENDING', details:response});
     }
     if(!MERCHANT_ID || !SALT_KEY){
       return res.status(501).json({error:'refund-not-configured'});
@@ -249,6 +261,18 @@ app.post('/api/admin/refund', requireAdmin, async (req,res)=>{
       return res.status(500).json({error:'phonepe-refund-failed', details:resp.data});
     }
     return res.json({ok:true, details:resp.data});
+  }catch(e){
+    return res.status(500).json({error:'server-error', message:String(e)});
+  }
+});
+
+app.get('/api/admin/refund-status/:id', requireAdmin, async (req,res)=>{
+  try{
+    const id = req.params.id;
+    const client = getSdkClient();
+    if(!client) return res.status(500).json({error:'sdk-not-configured'});
+    const response = await client.getRefundStatus(String(id));
+    return res.json({ok:true, state:response?.state||'PENDING', details:response});
   }catch(e){
     return res.status(500).json({error:'server-error', message:String(e)});
   }
