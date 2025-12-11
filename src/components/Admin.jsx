@@ -304,9 +304,12 @@ export default function Admin(){
                 <button className="px-2 py-1 rounded-md bg-[#2a2a2a] border border-[#3a3a3a]" onClick={()=>setSelected(o)}>View</button>
                 <button className="px-2 py-1 rounded-md bg-[#2a2a2a] border border-[#3a3a3a]" onClick={()=>markDelivered(o.id)}>Mark Delivered</button>
                 <button className="px-2 py-1 rounded-md bg-[#2a2a2a] border border-[#3a3a3a]" onClick={()=>{ if(confirm(`Refund ₹${o.total}?`)) refundOrder(o.id, o.total); }} disabled={orderStatus[o.id]?.pending}>Refund</button>
-                <button className="px-2 py-1 rounded-md bg-[#3a0f0f] border border-[#5a1212] text-[#f5c84a]" onClick={()=>deleteOrder(o.id)} aria-label="Delete">
-                  <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M3 6h18M8 6v12m8-12v12M5 6l1 14a2 2 0 002 2h8a2 2 0 002-2l1-14"/>
+                <button className="px-2 py-1 rounded-md border border-transparent text-[#ff8aa0] hover:bg-[#1a1a1a]" onClick={()=>deleteOrder(o.id)} aria-label="Delete">
+                  <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M8 6h8"/>
+                    <rect x="6" y="9" width="12" height="12" rx="2"/>
+                    <path d="M10 12v6"/>
+                    <path d="M14 12v6"/>
                   </svg>
                 </button>
                 {orderStatus[o.id]?.text && (

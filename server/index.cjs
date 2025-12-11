@@ -452,6 +452,40 @@ app.post('/api/payment-callback', (req,res)=>{
   }
 });
 
+app.post('/api/phonepe/webhook', (req,res)=>{
+  try{
+    const client = getSdkClient();
+    const auth = req.headers['authorization']||'';
+    const cbUser = process.env.PHONEPE_CB_USER||'';
+    const cbPass = process.env.PHONEPE_CB_PASS||'';
+    if(client && cbUser && cbPass && req.rawBody){
+      try{
+        const validated = client.validateCallback(cbUser, cbPass, auth, req.rawBody);
+        const event = validated?.event || validated?.type || '';
+        const payload = validated?.payload||{};
+        const orderId = String(payload.originalMerchantOrderId||payload.orderId||'');
+        const txn = String(payload.transactionId||'');
+        const st = String(payload.state||'PENDING');
+        if(orderId){
+          const mapped = st==='COMPLETED' ? 'SUCCESS' : (st==='FAILED' ? 'FAILED' : 'PENDING');
+          payments.set(orderId, {status:mapped, transactionId:txn});
+        }
+        if(event && event.startsWith('pg.refund')){
+          const rid = String(payload.merchantRefundId||payload.refundId||'');
+          const msg = `data: ${JSON.stringify({type:'refund.updated', orderId, refundId:rid, state:st})}\n\n`;
+          orderClients.forEach((res)=>{ try{ res.write(msg); }catch{} });
+        }
+        return res.json({ok:true});
+      }catch(e){
+        return res.status(400).json({error:'invalid-callback'});
+      }
+    }
+    return res.json({ok:true});
+  }catch{
+    res.status(500).json({error:'callback-error'});
+  }
+});
+
 app.get('/api/payment-status/:id', async (req,res)=>{
   try{
     const id = req.params.id;
