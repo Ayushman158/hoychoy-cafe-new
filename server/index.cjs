@@ -609,3 +609,22 @@ function getClientId(req){
     return xf || req.ip || 'unknown';
   }catch{ return 'unknown'; }
 }
+// SEO endpoints served by backend (do not interfere with SPA rendering)
+app.get('/robots.txt', (req, res) => {
+  try{
+    const origin = (process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+    const txt = `User-agent: *\nAllow: /\nSitemap: ${origin}/sitemap.xml\n`;
+    res.set('Content-Type','text/plain');
+    res.send(txt);
+  }catch{ res.set('Content-Type','text/plain'); res.send('User-agent: *\nAllow: /\n'); }
+});
+
+app.get('/sitemap.xml', (req, res) => {
+  const origin = (process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+  const paths = ['/', '/privacy', '/terms', '/refund', '/shipping', '/about', '/reserve', '/admin'];
+  const now = new Date().toISOString();
+  const urls = paths.map(p=>`  <url>\n    <loc>${origin}${p}</loc>\n    <lastmod>${now}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>${p==='/'?'1.00':'0.80'}</priority>\n  </url>`).join('\n');
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>`;
+  res.set('Content-Type','application/xml');
+  res.send(xml);
+});
