@@ -200,7 +200,7 @@ export default function Admin(){
           <span>Owner Toggle</span>
           <button
             type="button"
-            onClick={()=>setOpen(!ownerClosed)}
+            onClick={()=>setOpen(ownerClosed)}
             className={`relative inline-flex items-center h-8 w-20 rounded-full border transition ${!ownerClosed?'bg-[#f5c84a] text-black border-[#f5c84a]':'bg-transparent text-white border-[#444]'} ${toggling?'opacity-70 cursor-not-allowed':''}`}
             disabled={toggling}
           >
