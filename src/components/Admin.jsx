@@ -132,6 +132,28 @@ export default function Admin(){
       setMsg('Order marked delivered');
     }catch{ setMsg('Network error'); }
   }
+  async function deleteOrder(id){
+    if(!confirm(`Delete order #${id}? This cannot be undone.`)) return;
+    setMsg("");
+    try{
+      const r=await fetch(`${BACKEND_URL}/api/admin/order-delete`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},body:JSON.stringify({id})});
+      const d=await r.json();
+      if(!r.ok || !d.ok){ setMsg('Failed to delete order'); return; }
+      setOrders(prev=>prev.filter(x=>x.id!==id));
+      setMsg('Order deleted');
+    }catch{ setMsg('Network error'); }
+  }
+  async function clearAll(){
+    if(!confirm('Clear all orders? This cannot be undone.')) return;
+    setMsg("");
+    try{
+      const r=await fetch(`${BACKEND_URL}/api/admin/orders-clear`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`}});
+      const d=await r.json();
+      if(!r.ok || !d.ok){ setMsg('Failed to clear orders'); return; }
+      setOrders([]);
+      setMsg('All orders cleared');
+    }catch{ setMsg('Network error'); }
+  }
 
   async function addItem(e){
     e.preventDefault(); setMsg("");
@@ -266,7 +288,10 @@ export default function Admin(){
 
       {authed && (
       <div className="card mt-3">
-        <div className="section-title">New Orders</div>
+        <div className="section-title flex items-center justify-between">
+          <span>New Orders</span>
+          <button className="btn" onClick={clearAll}>Clear All</button>
+        </div>
         <ul className="flex flex-col gap-2 max-h-[280px] overflow-auto">
           {(orders||[]).map((o)=> (
             <li key={o.id} className="row">
@@ -279,6 +304,11 @@ export default function Admin(){
                 <button className="px-2 py-1 rounded-md bg-[#2a2a2a] border border-[#3a3a3a]" onClick={()=>setSelected(o)}>View</button>
                 <button className="px-2 py-1 rounded-md bg-[#2a2a2a] border border-[#3a3a3a]" onClick={()=>markDelivered(o.id)}>Mark Delivered</button>
                 <button className="px-2 py-1 rounded-md bg-[#2a2a2a] border border-[#3a3a3a]" onClick={()=>{ if(confirm(`Refund ₹${o.total}?`)) refundOrder(o.id, o.total); }} disabled={orderStatus[o.id]?.pending}>Refund</button>
+                <button className="px-2 py-1 rounded-md bg-[#3a0f0f] border border-[#5a1212] text-[#f5c84a]" onClick={()=>deleteOrder(o.id)} aria-label="Delete">
+                  <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M3 6h18M8 6v12m8-12v12M5 6l1 14a2 2 0 002 2h8a2 2 0 002-2l1-14"/>
+                  </svg>
+                </button>
                 {orderStatus[o.id]?.text && (
                   <span className={`text-xs ${orderStatus[o.id]?.type==='success'?'text-success':orderStatus[o.id]?.type==='error'?'text-error':'text-muted'}`}>{orderStatus[o.id]?.text}</span>
                 )}

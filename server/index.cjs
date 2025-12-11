@@ -542,6 +542,32 @@ app.post('/api/admin/order-delivered', requireAdmin, (req,res)=>{
     return res.status(500).json({error:'server-error'});
   }
 });
+
+app.post('/api/admin/order-delete', requireAdmin, (req,res)=>{
+  try{
+    const { id } = req.body||{};
+    if(!id) return res.status(400).json({error:'id required'});
+    const idx = orders.findIndex(o=>String(o.id)===String(id));
+    if(idx<0) return res.status(404).json({error:'order-not-found'});
+    const removed = orders.splice(idx,1)[0];
+    const payload = `data: ${JSON.stringify({type:'order.deleted', id:String(id)})}\n\n`;
+    orderClients.forEach((res)=>{ try{ res.write(payload); }catch{} });
+    return res.json({ok:true, id:String(id)});
+  }catch(e){
+    return res.status(500).json({error:'server-error'});
+  }
+});
+
+app.post('/api/admin/orders-clear', requireAdmin, (req,res)=>{
+  try{
+    orders.length = 0;
+    const payload = `data: ${JSON.stringify({type:'orders.cleared'})}\n\n`;
+    orderClients.forEach((res)=>{ try{ res.write(payload); }catch{} });
+    return res.json({ok:true});
+  }catch(e){
+    return res.status(500).json({error:'server-error'});
+  }
+});
 const loginAttempts = new Map();
 function getClientId(req){
   try{
