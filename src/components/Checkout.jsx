@@ -11,6 +11,7 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
   const [phone,setPhone]=useState("");
   const [address,setAddress]=useState("");
   const [note,setNote]=useState("");
+  const [paying,setPaying]=useState(false);
   const [geo,setGeo]=useState(null);
   const [manualLink,setManualLink]=useState("");
   const [geoError,setGeoError]=useState("");
@@ -103,10 +104,16 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
   function submit(){onSubmit({name,phone,address,note,geo,manualLink:manualLink.trim(),total,items,gst,deliveryFee,grandTotal});}
 
   async function payNow(){
+    if(paying) return;
     if(!canOrder){
       alert('Minimum order is ₹200. Please add more items before paying.');
       return;
     }
+    if(!valid){
+      alert('Please fill in name, 10‑digit phone, address, and location to continue.');
+      return;
+    }
+    setPaying(true);
     const orderId = `HC-${generateOrderId()}-${Date.now()}`;
     const redirectUrl = `${window.location.origin}/?merchantTransactionId=${orderId}`;
     const callbackUrl = `${BACKEND_URL}/api/payment-callback`;
@@ -117,6 +124,7 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
     const data = await resp.json();
     if(!resp.ok || !data.redirectUrl){
       alert('Could not start PhonePe payment. Please try again.');
+      setPaying(false);
       return;
     }
     localStorage.setItem('pp_last_txn', orderId);
@@ -237,7 +245,8 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
           <span>I agree to the <a href="/terms" className="text-[#f5c84a] underline">Terms & Conditions</a></span>
         </label>
         {!canOrder && <div className="text-error text-xs mb-2">Minimum order is ₹200</div>}
-        <button className={`btn btn-primary w-full`} onClick={payNow}>Pay ₹{grandTotal}</button>
+        {!valid && <div className="text-error text-xs mb-2">Please fill in required details to pay</div>}
+        <button className={`btn btn-primary w-full ${(!valid||paying)?'btn-disabled':''}`} onClick={payNow} disabled={!valid || paying}>{paying?'Starting…':`Pay ₹${grandTotal}`}</button>
         <div className="text-muted text-xs mt-2">You will be redirected to PhonePe to complete payment.</div>
       </div>
       <div className="mt-4 mb-6">
