@@ -27,6 +27,7 @@ export default function Admin(){
   const [ownerClosed,setOwnerClosed]=useState(false);
   const [closingMessage,setClosingMessage]=useState("");
   const [orderStatus,setOrderStatus]=useState({});
+  const [toggling,setToggling]=useState(false);
 
   useEffect(()=>{ refreshStatus(); },[]);
   useEffect(()=>{ refreshOverrides(); },[]);
@@ -82,14 +83,17 @@ export default function Admin(){
   async function refreshOverrides(){
     try{ const r=await fetch(`${BACKEND_URL}/api/menu-overrides`); const d=await r.json(); if(r.ok){ setOwnerClosed(!!d.appClosed); setClosingMessage(String(d.closingMessage||"")); } }catch{}
   }
-  async function setOpen(v){
-    setMsg("");
+  async function setOpen(open){
+    setMsg(""); setToggling(true);
+    const prev = ownerClosed;
+    setOwnerClosed(!open);
     try{
-      const r=await fetch(`${BACKEND_URL}/api/admin/set-app-open`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},body:JSON.stringify({open:v})});
+      const r=await fetch(`${BACKEND_URL}/api/admin/set-app-open`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},body:JSON.stringify({open})});
       const d=await r.json();
-      if(!r.ok){ setMsg('Failed to update app status'); return; }
+      if(!r.ok){ setOwnerClosed(prev); setMsg('Failed to update app status'); setToggling(false); return; }
       await refreshStatus(); await refreshOverrides(); setMsg('App status updated');
-    }catch{ setMsg('Network error'); }
+    }catch{ setOwnerClosed(prev); setMsg('Network error'); }
+    setToggling(false);
   }
 
   async function toggleAvailability(id, available){
@@ -196,8 +200,9 @@ export default function Admin(){
           <span>Owner Toggle</span>
           <button
             type="button"
-            onClick={()=>setOpen(ownerClosed)}
-            className={`relative inline-flex items-center h-8 w-20 rounded-full border transition ${!ownerClosed?'bg-[#f5c84a] text-black border-[#f5c84a]':'bg-transparent text-white border-[#444]'}`}
+            onClick={()=>setOpen(!ownerClosed)}
+            className={`relative inline-flex items-center h-8 w-20 rounded-full border transition ${!ownerClosed?'bg-[#f5c84a] text-black border-[#f5c84a]':'bg-transparent text-white border-[#444]'} ${toggling?'opacity-70 cursor-not-allowed':''}`}
+            disabled={toggling}
           >
             <span className="absolute left-2 text-xs font-bold">{!ownerClosed?'ON':''}</span>
             <span className="absolute right-2 text-xs font-bold">{ownerClosed?'OFF':''}</span>
