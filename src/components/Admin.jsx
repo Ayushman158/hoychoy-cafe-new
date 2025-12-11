@@ -26,6 +26,7 @@ export default function Admin(){
   const [selected,setSelected]=useState(null);
   const [ownerClosed,setOwnerClosed]=useState(false);
   const [closingMessage,setClosingMessage]=useState("");
+  const [orderStatus,setOrderStatus]=useState({});
 
   useEffect(()=>{ refreshStatus(); },[]);
   useEffect(()=>{ refreshOverrides(); },[]);
@@ -101,17 +102,24 @@ export default function Admin(){
   }
 
   async function refundOrder(orderId, amount){
+    setOrderStatus(s=>({...s,[orderId]:{pending:true,type:'info',text:'Processing refund…'}}));
     setMsg("");
     try{
       const r=await fetch(`${BACKEND_URL}/api/admin/refund`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},body:JSON.stringify({orderId,amount})});
       const d=await r.json();
       if(!r.ok || !d.ok){
         const err = d && d.error ? d.error : 'refund-failed';
-        setMsg(err==='refund-not-configured' ? 'Refund not configured on server' : 'Refund failed');
+        const friendly = err==='refund-not-configured' ? 'Refund is not configured on the server' : (err==='payment-not-verified' ? 'Payment not verified for this order' : 'Refund failed');
+        setOrderStatus(s=>({...s,[orderId]:{pending:false,type:'error',text:friendly}}));
+        setMsg(friendly);
         return;
       }
+      setOrderStatus(s=>({...s,[orderId]:{pending:false,type:'success',text:'Refund initiated successfully'}}));
       setMsg('Refund initiated successfully');
-    }catch{ setMsg('Network error'); }
+    }catch{
+      setOrderStatus(s=>({...s,[orderId]:{pending:false,type:'error',text:'Network error'}}));
+      setMsg('Network error');
+    }
   }
 
   async function markDelivered(id){
@@ -270,7 +278,10 @@ export default function Admin(){
                 {o.status==='DELIVERED' && <span className="text-success text-xs">Delivered</span>}
                 <button className="px-2 py-1 rounded-md bg-[#2a2a2a] border border-[#3a3a3a]" onClick={()=>setSelected(o)}>View</button>
                 <button className="px-2 py-1 rounded-md bg-[#2a2a2a] border border-[#3a3a3a]" onClick={()=>markDelivered(o.id)}>Mark Delivered</button>
-                <button className="px-2 py-1 rounded-md bg-[#2a2a2a] border border-[#3a3a3a]" onClick={()=>refundOrder(o.id, o.total)}>Refund</button>
+                <button className="px-2 py-1 rounded-md bg-[#2a2a2a] border border-[#3a3a3a]" onClick={()=>{ if(confirm(`Refund ₹${o.total}?`)) refundOrder(o.id, o.total); }} disabled={orderStatus[o.id]?.pending}>Refund</button>
+                {orderStatus[o.id]?.text && (
+                  <span className={`text-xs ${orderStatus[o.id]?.type==='success'?'text-success':orderStatus[o.id]?.type==='error'?'text-error':'text-muted'}`}>{orderStatus[o.id]?.text}</span>
+                )}
               </span>
             </li>
           ))}
