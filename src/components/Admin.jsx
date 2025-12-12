@@ -29,6 +29,20 @@ export default function Admin(){
   const [orderStatus,setOrderStatus]=useState({});
   const [toggling,setToggling]=useState(false);
   const [closureDuration,setClosureDuration]=useState('0');
+  const untilLabel = useMemo(()=>{
+    try{
+      const cu = Number(status.closedUntil||0);
+      if(status.ownerClosed){
+        if(cu>0){
+          const dt = new Date(cu);
+          const t = dt.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+          return `Closed until ${t}`;
+        }
+        return 'Closed until admin reopens';
+      }
+      return '';
+    }catch{ return '' }
+  },[status]);
   async function authedFetch(url, options){
     const headers = Object.assign({}, options?.headers||{}, { 'Authorization': `Bearer ${token}` });
     const r = await fetch(url, Object.assign({}, options||{}, { headers }));
@@ -217,6 +231,7 @@ export default function Admin(){
             <span className={`inline-block h-6 w-6 rounded-full bg-white shadow transform transition ${!ownerClosed?'translate-x-12':'translate-x-1'}`}></span>
           </button>
           <span className="text-sm text-muted">{!ownerClosed?'Open':'Closed by owner'}</span>
+          {untilLabel && <span className="text-xs text-[#f5c84a] ml-2">{untilLabel}</span>}
           {ownerClosed===false && (
             <span className="flex items-center gap-2 ml-4">
               <span className="text-xs">Close for</span>
