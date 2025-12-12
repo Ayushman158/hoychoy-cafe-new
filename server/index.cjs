@@ -144,7 +144,7 @@ const orderRecon = new Map();
 function isWithinHours(){ const h=new Date().getHours(); return h>=12 && h<21; }
 app.get('/api/app-status', (req,res)=>{
   const within = isWithinHours();
-  const closed = overrides.appClosed===true || process.env.APP_CLOSED==='1';
+  const closed = (overrides.appClosed===true && (!overrides.closedUntil || Date.now() < overrides.closedUntil)) || process.env.APP_CLOSED==='1';
   const open = within && !closed;
   const reason = closed ? 'CLOSED_BY_OWNER' : (within ? 'OPEN' : 'OUT_OF_HOURS');
   res.json({open, reason});
@@ -237,10 +237,16 @@ app.get('/api/admin/orders/stream', (req,res)=>{
 });
 
 app.post('/api/admin/set-app-open', requireAdmin, (req,res)=>{
-  const { open } = req.body || {};
+  const { open, until } = req.body || {};
   overrides.appClosed = !open;
+  if(!open){
+    const dur = typeof until==='number' && until>0 ? until : (6*60*60*1000); // default 6 hours
+    overrides.closedUntil = Date.now() + dur;
+  }else{
+    overrides.closedUntil = 0;
+  }
   saveOverrides(overrides);
-  res.json({ok:true, appClosed:overrides.appClosed});
+  res.json({ok:true, appClosed:overrides.appClosed, closedUntil:overrides.closedUntil||0});
 });
 
 app.post('/api/admin/set-closing-message', requireAdmin, (req,res)=>{
