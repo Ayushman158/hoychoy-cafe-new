@@ -151,14 +151,13 @@ const orderClients = new Set();
 const orderRecon = new Map();
 
 function isWithinHours(){ const h=new Date().getHours(); return h>=12 && h<21; }
-app.get('/api/app-status', (req,res)=>{
+app.get('/api/app-status', async (req,res)=>{
+  try{ await refreshOverridesFromStore(); }catch{}
   const within = isWithinHours();
   const closed = (overrides.appClosed===true && (!overrides.closedUntil || Date.now() < overrides.closedUntil)) || process.env.APP_CLOSED==='1';
   const open = within && !closed;
   const reason = closed ? 'CLOSED_BY_OWNER' : (within ? 'OPEN' : 'OUT_OF_HOURS');
-  refreshOverridesFromStore().finally(()=>{
-    res.json({open, reason, ownerClosed: overrides.appClosed===true, closedUntil: overrides.closedUntil||0});
-  });
+  res.json({open, reason, ownerClosed: overrides.appClosed===true, closedUntil: overrides.closedUntil||0});
 });
 
 function requireAdmin(req,res,next){
@@ -198,6 +197,20 @@ app.get('/api/admin/me', (req,res)=>{
 
 app.get('/api/menu-overrides', (req,res)=>{
   refreshOverridesFromStore().finally(()=>{ res.json(overrides||{}); });
+});
+
+// Debug helpers (no secrets) to verify persistence state
+app.get('/api/debug/overrides', async (req,res)=>{
+  try{
+    const up = await upGet('hc:overrides');
+    const fsOv = loadOverridesFS();
+    res.json({
+      upstashConfigured: !!(UP_URL && UP_TOKEN),
+      upstashValue: up || null,
+      filesystemValue: fsOv || null,
+      activeValue: overrides || null
+    });
+  }catch(e){ res.status(500).json({error:'debug-failed'}); }
 });
 
 app.post('/api/order', async (req,res)=>{
