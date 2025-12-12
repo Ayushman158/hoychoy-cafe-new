@@ -33,11 +33,19 @@ const MIN_ORDER_RUPEES = Number(process.env.MIN_ORDER_RUPEES||200);
 const DATA_DIR = process.env.DATA_DIR || '/var/data';
 const OV_PATH = path.join(DATA_DIR, 'overrides.json');
 function ensureDir(){try{fs.mkdirSync(DATA_DIR,{recursive:true});}catch{}}
-function loadOverrides(){
-  try{ ensureDir(); const s=fs.readFileSync(OV_PATH,'utf-8'); return JSON.parse(s||'{}'); }catch{ return {}; }
+function loadOverridesFS(){ try{ ensureDir(); const s=fs.readFileSync(OV_PATH,'utf-8'); return JSON.parse(s||'{}'); }catch{ return {}; } }
+function saveOverridesFS(obj){ try{ ensureDir(); fs.writeFileSync(OV_PATH, JSON.stringify(obj,null,2)); }catch{} }
+const UP_URL = process.env.UPSTASH_REDIS_REST_URL || '';
+const UP_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || '';
+async function upGet(key){
+  try{ if(!UP_URL||!UP_TOKEN) return null; const r=await fetch(`${UP_URL}/get/${encodeURIComponent(key)}`,{headers:{Authorization:`Bearer ${UP_TOKEN}`}}); if(!r.ok) return null; const t=await r.text(); if(!t||t==='null') return null; try{ return JSON.parse(t); }catch{ return null; } }catch{ return null }
 }
-function saveOverrides(obj){ try{ ensureDir(); fs.writeFileSync(OV_PATH, JSON.stringify(obj,null,2)); }catch{} }
-let overrides = loadOverrides();
+async function upSet(key, value){
+  try{ if(!UP_URL||!UP_TOKEN) return false; const val=encodeURIComponent(JSON.stringify(value)); const r=await fetch(`${UP_URL}/set/${encodeURIComponent(key)}/${val}`,{method:'POST',headers:{Authorization:`Bearer ${UP_TOKEN}`}}); return r.ok; }catch{ return false }
+}
+let overrides = loadOverridesFS();
+async function refreshOverridesFromStore(){ const v = await upGet('hc:overrides'); if(v && typeof v==='object'){ overrides = v; saveOverridesFS(overrides); } }
+function saveOverrides(obj){ overrides = obj; saveOverridesFS(obj); upSet('hc:overrides', obj); }
 const sessions = new Map();
 const ADMIN_TOKEN_TTL_HOURS = Number(process.env.ADMIN_TOKEN_TTL_HOURS||24);
 function createSession(){ const t=crypto.randomBytes(24).toString('hex'); const exp=Date.now()+ADMIN_TOKEN_TTL_HOURS*60*60*1000; sessions.set(t,{exp}); return t; }
@@ -148,7 +156,9 @@ app.get('/api/app-status', (req,res)=>{
   const closed = (overrides.appClosed===true && (!overrides.closedUntil || Date.now() < overrides.closedUntil)) || process.env.APP_CLOSED==='1';
   const open = within && !closed;
   const reason = closed ? 'CLOSED_BY_OWNER' : (within ? 'OPEN' : 'OUT_OF_HOURS');
-  res.json({open, reason, ownerClosed: overrides.appClosed===true, closedUntil: overrides.closedUntil||0});
+  refreshOverridesFromStore().finally(()=>{
+    res.json({open, reason, ownerClosed: overrides.appClosed===true, closedUntil: overrides.closedUntil||0});
+  });
 });
 
 function requireAdmin(req,res,next){
@@ -187,7 +197,7 @@ app.get('/api/admin/me', (req,res)=>{
 });
 
 app.get('/api/menu-overrides', (req,res)=>{
-  res.json(overrides||{});
+  refreshOverridesFromStore().finally(()=>{ res.json(overrides||{}); });
 });
 
 app.post('/api/order', async (req,res)=>{
