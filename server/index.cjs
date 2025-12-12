@@ -253,6 +253,32 @@ app.get('/api/admin/orders', requireAdmin, (req,res)=>{
   res.json({orders:list});
 });
 
+app.get('/api/admin/orders.csv', requireAdmin, (req,res)=>{
+  const list = orders.slice().sort((a,b)=>b.createdAt-a.createdAt);
+  const header = ['id','createdAt','status','total','name','phone','address','note','items'].join(',');
+  const rows = list.map(o=>{
+    const items = (o.items||[]).map(it=>`${(it.item&&it.item.name)||''} x${it.qty}`).join(' | ');
+    const cust = o.customer||{};
+    const created = new Date(o.createdAt||Date.now()).toISOString();
+    const status = o.status||'NEW';
+    return [
+      o.id,
+      created,
+      status,
+      Number(o.total||0),
+      (cust.name||'').replace(/,/g,' '),
+      (cust.phone||'').replace(/,/g,' '),
+      (cust.address||'').replace(/,/g,' '),
+      (cust.note||'').replace(/,/g,' '),
+      items.replace(/,/g,';')
+    ].join(',');
+  });
+  const csv = [header].concat(rows).join('\n');
+  res.setHeader('Content-Type','text/csv');
+  res.setHeader('Content-Disposition','attachment; filename="orders.csv"');
+  res.send(csv);
+});
+
 app.get('/api/admin/orders/stream', (req,res)=>{
   const hdr = req.headers['authorization']||'';
   const tokHdr = hdr.startsWith('Bearer ') ? hdr.slice(7) : hdr;

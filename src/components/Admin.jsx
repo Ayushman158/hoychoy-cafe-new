@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { getMenu, makeIdFromName } from "../utils/menu.js";
-import { BACKEND_URL } from "../config.js";
+import { BACKEND_URL, OWNER_PHONE } from "../config.js";
 
 export default function Admin(){
   const [token,setToken]=useState(()=>localStorage.getItem('hc_admin_token')||'');
@@ -29,6 +29,12 @@ export default function Admin(){
   const [orderStatus,setOrderStatus]=useState({});
   const [toggling,setToggling]=useState(false);
   const [closureDuration,setClosureDuration]=useState('0');
+  const [orderFilter,setOrderFilter]=useState('ALL');
+  const filteredOrders = useMemo(()=>{
+    if(orderFilter==='DELIVERED') return (orders||[]).filter(o=>o.status==='DELIVERED');
+    if(orderFilter==='NEW') return (orders||[]).filter(o=>o.status!=='DELIVERED');
+    return orders||[];
+  },[orders,orderFilter]);
   const untilLabel = useMemo(()=>{
     try{
       const cu = Number(status.closedUntil||0);
@@ -180,6 +186,18 @@ export default function Admin(){
       setMsg('All orders cleared');
     }catch{ setMsg('Network error'); }
   }
+  async function exportCsv(){
+    try{
+      const r=await authedFetch(`${BACKEND_URL}/api/admin/orders.csv`,{method:'GET'});
+      const txt=await r.text();
+      const blob=new Blob([txt],{type:'text/csv'});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a');
+      a.href=url; a.download='orders.csv'; a.click();
+      URL.revokeObjectURL(url);
+      setMsg('Exported CSV');
+    }catch{ setMsg('Export failed'); }
+  }
 
   async function addItem(e){
     e.preventDefault(); setMsg("");
@@ -326,13 +344,21 @@ export default function Admin(){
       )}
 
       {authed && (
-      <div className="card mt-3">
+        <div className="card mt-3">
         <div className="section-title flex items-center justify-between">
-          <span>New Orders</span>
-          <button className="btn" onClick={clearAll}>Clear All</button>
+          <span>Orders</span>
+          <div className="flex items-center gap-2">
+            <select className="bg-[#111] border border-[#222] rounded-xl p-1 text-xs" value={orderFilter} onChange={e=>setOrderFilter(e.target.value)}>
+              <option value="ALL">All</option>
+              <option value="NEW">New</option>
+              <option value="DELIVERED">Delivered</option>
+            </select>
+            <button className="btn" onClick={exportCsv}>Export CSV</button>
+            <button className="btn" onClick={clearAll}>Clear All</button>
+          </div>
         </div>
         <ul className="flex flex-col gap-2 max-h-[280px] overflow-auto">
-          {(orders||[]).map((o)=> (
+          {(filteredOrders||[]).map((o)=> (
             <li key={o.id} className="row">
               <span>#{o.id}</span>
               <span className="flex items-center gap-2">
@@ -361,41 +387,43 @@ export default function Admin(){
       </div>
       )}
 
-      {authed && selected && (
-        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center" onClick={()=>setSelected(null)}>
-          <div className="bg-[#0f0f0f] border border-[#222] rounded-xl p-4 w-[600px] max-w-[95%]" onClick={e=>e.stopPropagation()}>
-            <div className="section-title flex items-center justify-between"><span>Order #{selected.id}</span><button className="btn" onClick={()=>setSelected(null)}>✕</button></div>
-            <div className="mt-2">
-              <div className="row"><span>Status</span><span className="font-bold">{selected.status||'NEW'}</span></div>
-              <div className="row"><span>Total</span><span className="font-bold">₹{selected.total}</span></div>
-              <div className="row"><span>Customer</span><span>{selected.customer?.name} • {selected.customer?.phone}</span></div>
-              <div className="mt-2"><div className="font-semibold">Address</div><div className="text-sm">{selected.customer?.address}</div></div>
-              {selected.customer?.note && (
-                <div className="mt-2"><div className="font-semibold">Order Notes</div><div className="text-sm">{selected.customer?.note}</div></div>
-              )}
-              {selected.customer?.geo && (
-                <div className="mt-2 text-sm"><a className="text-[#f5c84a] underline" href={`https://maps.google.com/?q=${selected.customer.geo.lat},${selected.customer.geo.lng}`} target="_blank">Open in Maps</a></div>
-              )}
-              {selected.customer?.manualLink && (
-                <div className="mt-2 text-sm"><a className="text-[#f5c84a] underline" href={selected.customer.manualLink} target="_blank">User Link</a></div>
-              )}
-              <div className="mt-3">
-                <div className="font-semibold">Items</div>
-                <ul className="text-sm mt-1">
-                  {(selected.items||[]).map((it,i)=> (
-                    <li key={i}>• {it.item?.name} ×{it.qty} — ₹{it.item?.price}</li>
-                  ))}
-                </ul>
-              </div>
-              <div className="flex gap-2 mt-3">
-                <a className="btn" href={`tel:${selected.customer?.phone}`}>Call</a>
-                <button className="btn" onClick={()=>markDelivered(selected.id)}>Mark Delivered</button>
-                <button className="btn" onClick={()=>refundOrder(selected.id, selected.total)}>Refund</button>
+          {authed && selected && (
+            <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center" onClick={()=>setSelected(null)}>
+              <div className="bg-[#0f0f0f] border border-[#222] rounded-xl p-4 w-[600px] max-w-[95%]" onClick={e=>e.stopPropagation()}>
+                <div className="section-title flex items-center justify-between"><span>Order #{selected.id}</span><button className="btn" onClick={()=>setSelected(null)}>✕</button></div>
+                <div className="mt-2">
+                  <div className="row"><span>Status</span><span className="font-bold">{selected.status||'NEW'}</span></div>
+                  <div className="row"><span>Total</span><span className="font-bold">₹{selected.total}</span></div>
+                  <div className="row"><span>Customer</span><span>{selected.customer?.name} • {selected.customer?.phone}</span></div>
+                  <div className="mt-2"><div className="font-semibold">Address</div><div className="text-sm">{selected.customer?.address}</div></div>
+                  <div className="mt-1"><button className="btn" onClick={async()=>{ try{ await navigator.clipboard.writeText(selected.customer?.address||''); setMsg('Address copied'); }catch{} }}>Copy Address</button></div>
+                  {selected.customer?.note && (
+                    <div className="mt-2"><div className="font-semibold">Order Notes</div><div className="text-sm">{selected.customer?.note}</div></div>
+                  )}
+                  {selected.customer?.geo && (
+                    <div className="mt-2 text-sm"><a className="text-[#f5c84a] underline" href={`https://maps.google.com/?q=${selected.customer.geo.lat},${selected.customer.geo.lng}`} target="_blank">Open in Maps</a></div>
+                  )}
+                  {selected.customer?.manualLink && (
+                    <div className="mt-2 text-sm"><a className="text-[#f5c84a] underline" href={selected.customer.manualLink} target="_blank">User Link</a></div>
+                  )}
+                  <div className="mt-3">
+                    <div className="font-semibold">Items</div>
+                    <ul className="text-sm mt-1">
+                      {(selected.items||[]).map((it,i)=> (
+                        <li key={i}>• {it.item?.name} ×{it.qty} — ₹{it.item?.price}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="flex gap-2 mt-3">
+                    <a className="btn" href={`tel:${selected.customer?.phone}`}>Call</a>
+                    <a className="btn" target="_blank" rel="noopener" href={`https://wa.me/${OWNER_PHONE}?text=${encodeURIComponent(`🟢 New Order #${selected.id}\nTotal: ₹${selected.total}\nCustomer: ${selected.customer?.name} (${selected.customer?.phone})\nAddress: ${selected.customer?.address}\nItems: ${(selected.items||[]).map(it=>`${it.item?.name}×${it.qty}`).join(', ')}`)}`}>WhatsApp</a>
+                    <button className="btn" onClick={()=>markDelivered(selected.id)}>Mark Delivered</button>
+                    <button className="btn" onClick={()=>refundOrder(selected.id, selected.total)}>Refund</button>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
-      )}
+          )}
     </section>
   );
 }
