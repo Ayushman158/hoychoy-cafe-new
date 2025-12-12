@@ -38,7 +38,15 @@ function saveOverridesFS(obj){ try{ ensureDir(); fs.writeFileSync(OV_PATH, JSON.
 const UP_URL = process.env.UPSTASH_REDIS_REST_URL || '';
 const UP_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || '';
 async function upGet(key){
-  try{ if(!UP_URL||!UP_TOKEN) return null; const r=await fetch(`${UP_URL}/get/${encodeURIComponent(key)}`,{headers:{Authorization:`Bearer ${UP_TOKEN}`}}); if(!r.ok) return null; const t=await r.text(); if(!t||t==='null') return null; try{ return JSON.parse(t); }catch{ return null; } }catch{ return null }
+  try{
+    if(!UP_URL||!UP_TOKEN) return null;
+    const r=await fetch(`${UP_URL}/get/${encodeURIComponent(key)}`,{headers:{Authorization:`Bearer ${UP_TOKEN}`}});
+    if(!r.ok) return null;
+    const j=await r.json().catch(()=>null);
+    const raw = j && typeof j.result!=="undefined" ? j.result : null;
+    if(raw==null || raw==='null') return null;
+    try{ return JSON.parse(raw); }catch{ return raw; }
+  }catch{ return null }
 }
 async function upSet(key, value){
   try{ if(!UP_URL||!UP_TOKEN) return false; const val=encodeURIComponent(JSON.stringify(value)); const r=await fetch(`${UP_URL}/set/${encodeURIComponent(key)}/${val}`,{method:'POST',headers:{Authorization:`Bearer ${UP_TOKEN}`}}); return r.ok; }catch{ return false }
