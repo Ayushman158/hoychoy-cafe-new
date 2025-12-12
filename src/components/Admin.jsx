@@ -29,13 +29,19 @@ export default function Admin(){
   const [orderStatus,setOrderStatus]=useState({});
   const [toggling,setToggling]=useState(false);
   const [closureDuration,setClosureDuration]=useState('0');
+  async function authedFetch(url, options){
+    const headers = Object.assign({}, options?.headers||{}, { 'Authorization': `Bearer ${token}` });
+    const r = await fetch(url, Object.assign({}, options||{}, { headers }));
+    if(r.status===401){ setAuthed(false); setMsg('Please log in again'); }
+    return r;
+  }
 
   useEffect(()=>{ refreshStatus(); },[]);
   useEffect(()=>{ refreshOverrides(); },[]);
   useEffect(()=>{
     async function check(){
       if(!token) return;
-      try{ const r=await fetch(`${BACKEND_URL}/api/admin/me`,{headers:{'Authorization':`Bearer ${token}`}}); const d=await r.json(); setAuthed(!!d.authed); }catch{}
+    try{ const r=await authedFetch(`${BACKEND_URL}/api/admin/me`,{}); const d=await r.json(); setAuthed(!!d.authed); }catch{}
     }
     check();
   },[token]);
@@ -52,7 +58,7 @@ export default function Admin(){
           if(d.type==='order.updated' && d.order) setOrders((prev)=>prev.map(x=>x.id===d.order.id?d.order:x));
         }catch{}
       };
-      es.onerror = ()=>{ es.close(); };
+      es.onerror = ()=>{ es.close(); setAuthed(false); setMsg('Connection lost. Please log in again'); };
       return ()=>{ es.close(); };
     }catch{}
   },[authed, token]);
@@ -90,7 +96,7 @@ export default function Admin(){
     setOwnerClosed(!open);
     try{
       const until = !open ? Number(closureDuration||'0') : 0;
-      const r=await fetch(`${BACKEND_URL}/api/admin/set-app-open`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},body:JSON.stringify({open, until})});
+      const r=await authedFetch(`${BACKEND_URL}/api/admin/set-app-open`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({open, until})});
       const d=await r.json();
       if(!r.ok){ setOwnerClosed(prev); setMsg('Failed to update app status'); setToggling(false); return; }
       await refreshStatus(); await refreshOverrides(); setMsg('App status updated');
@@ -101,7 +107,7 @@ export default function Admin(){
   async function toggleAvailability(id, available){
     setMsg("");
     try{
-      const r=await fetch(`${BACKEND_URL}/api/admin/set-availability`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},body:JSON.stringify({id,available})});
+      const r=await authedFetch(`${BACKEND_URL}/api/admin/set-availability`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,available})});
       if(!r.ok){ setMsg('Failed to update availability'); return; }
       const fresh = getMenu().items||[]; setItems(fresh); setMsg('Availability updated');
     }catch{ setMsg('Network error'); }
@@ -111,7 +117,7 @@ export default function Admin(){
     setOrderStatus(s=>({...s,[orderId]:{pending:true,type:'info',text:'Processing refund…'}}));
     setMsg("");
     try{
-      const r=await fetch(`${BACKEND_URL}/api/admin/refund`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},body:JSON.stringify({orderId,amount})});
+      const r=await authedFetch(`${BACKEND_URL}/api/admin/refund`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderId,amount})});
       const d=await r.json();
       if(!r.ok || !d.ok){
         const err = d && d.error ? d.error : 'refund-failed';
@@ -131,7 +137,7 @@ export default function Admin(){
   async function markDelivered(id){
     setMsg("");
     try{
-      const r=await fetch(`${BACKEND_URL}/api/admin/order-delivered`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},body:JSON.stringify({id})});
+      const r=await authedFetch(`${BACKEND_URL}/api/admin/order-delivered`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
       const d=await r.json();
       if(!r.ok || !d.ok){ setMsg('Failed to mark delivered'); return; }
       setOrders(prev=>prev.map(x=>x.id===id?d.order:x));
@@ -142,7 +148,7 @@ export default function Admin(){
     if(!confirm(`Delete order #${id}? This cannot be undone.`)) return;
     setMsg("");
     try{
-      const r=await fetch(`${BACKEND_URL}/api/admin/order-delete`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},body:JSON.stringify({id})});
+      const r=await authedFetch(`${BACKEND_URL}/api/admin/order-delete`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
       const d=await r.json();
       if(!r.ok || !d.ok){ setMsg('Failed to delete order'); return; }
       setOrders(prev=>prev.filter(x=>x.id!==id));
@@ -153,7 +159,7 @@ export default function Admin(){
     if(!confirm('Clear all orders? This cannot be undone.')) return;
     setMsg("");
     try{
-      const r=await fetch(`${BACKEND_URL}/api/admin/orders-clear`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`}});
+      const r=await authedFetch(`${BACKEND_URL}/api/admin/orders-clear`,{method:'POST',headers:{'Content-Type':'application/json'}});
       const d=await r.json();
       if(!r.ok || !d.ok){ setMsg('Failed to clear orders'); return; }
       setOrders([]);
@@ -165,7 +171,7 @@ export default function Admin(){
     e.preventDefault(); setMsg("");
     const id = makeIdFromName(name||'item');
     try{
-      const r=await fetch(`${BACKEND_URL}/api/admin/add-item`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},body:JSON.stringify({id,name,price:Number(price||0),veg,category})});
+      const r=await authedFetch(`${BACKEND_URL}/api/admin/add-item`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,name,price:Number(price||0),veg,category})});
       const d=await r.json();
       if(!r.ok){ setMsg('Failed to add item'); return; }
       setItems(getMenu().items||[]);
@@ -248,7 +254,7 @@ export default function Admin(){
               <button className="btn btn-primary" type="button" onClick={async ()=>{
                 setMsg("");
                 try{
-                  const r=await fetch(`${BACKEND_URL}/api/admin/set-closing-message`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},body:JSON.stringify({preset:'custom',message:closingMessage})});
+                  const r=await authedFetch(`${BACKEND_URL}/api/admin/set-closing-message`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({preset:'custom',message:closingMessage})});
                   const d=await r.json();
                   if(!r.ok || !d.ok){ setMsg('Failed to save message'); return; }
                   setMsg('Closing message updated');
