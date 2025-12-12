@@ -147,7 +147,7 @@ app.get('/api/app-status', (req,res)=>{
   const closed = (overrides.appClosed===true && (!overrides.closedUntil || Date.now() < overrides.closedUntil)) || process.env.APP_CLOSED==='1';
   const open = within && !closed;
   const reason = closed ? 'CLOSED_BY_OWNER' : (within ? 'OPEN' : 'OUT_OF_HOURS');
-  res.json({open, reason});
+  res.json({open, reason, ownerClosed: overrides.appClosed===true, closedUntil: overrides.closedUntil||0});
 });
 
 function requireAdmin(req,res,next){
@@ -240,8 +240,12 @@ app.post('/api/admin/set-app-open', requireAdmin, (req,res)=>{
   const { open, until } = req.body || {};
   overrides.appClosed = !open;
   if(!open){
-    const dur = typeof until==='number' && until>0 ? until : (6*60*60*1000); // default 6 hours
-    overrides.closedUntil = Date.now() + dur;
+    if(typeof until==='number' && until>0){
+      overrides.closedUntil = Date.now() + until;
+    }else{
+      // Indefinite closure until admin reopens
+      overrides.closedUntil = 0;
+    }
   }else{
     overrides.closedUntil = 0;
   }
