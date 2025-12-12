@@ -28,6 +28,7 @@ export default function Admin(){
   const [closingMessage,setClosingMessage]=useState("");
   const [orderStatus,setOrderStatus]=useState({});
   const [toggling,setToggling]=useState(false);
+  const [closureDuration,setClosureDuration]=useState('0');
 
   useEffect(()=>{ refreshStatus(); },[]);
   useEffect(()=>{ refreshOverrides(); },[]);
@@ -88,7 +89,8 @@ export default function Admin(){
     const prev = ownerClosed;
     setOwnerClosed(!open);
     try{
-      const r=await fetch(`${BACKEND_URL}/api/admin/set-app-open`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},body:JSON.stringify({open})});
+      const until = !open ? Number(closureDuration||'0') : 0;
+      const r=await fetch(`${BACKEND_URL}/api/admin/set-app-open`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},body:JSON.stringify({open, until})});
       const d=await r.json();
       if(!r.ok){ setOwnerClosed(prev); setMsg('Failed to update app status'); setToggling(false); return; }
       await refreshStatus(); await refreshOverrides(); setMsg('App status updated');
@@ -209,6 +211,17 @@ export default function Admin(){
             <span className={`inline-block h-6 w-6 rounded-full bg-white shadow transform transition ${!ownerClosed?'translate-x-12':'translate-x-1'}`}></span>
           </button>
           <span className="text-sm text-muted">{!ownerClosed?'Open':'Closed by owner'}</span>
+          {ownerClosed===false && (
+            <span className="flex items-center gap-2 ml-4">
+              <span className="text-xs">Close for</span>
+              <select className="bg-[#111] border border-[#222] rounded-xl p-1 text-xs" value={closureDuration} onChange={e=>setClosureDuration(e.target.value)}>
+                <option value="0">Until I reopen</option>
+                <option value="7200000">2 hours</option>
+                <option value="21600000">6 hours</option>
+                <option value="43200000">12 hours</option>
+              </select>
+            </span>
+          )}
         </div>
         <div className="flex gap-2 mt-2">
           <button className="btn" onClick={()=>{refreshStatus();refreshOverrides();}}>Refresh</button>
