@@ -30,8 +30,9 @@ const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'hoychoycafe@gmail.com';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'h0ych0ycafe123';
 const MIN_ORDER_RUPEES = Number(process.env.MIN_ORDER_RUPEES||200);
 
-const OV_PATH = path.join(__dirname, 'data', 'overrides.json');
-function ensureDir(){try{fs.mkdirSync(path.dirname(OV_PATH),{recursive:true});}catch{}}
+const DATA_DIR = process.env.DATA_DIR || '/var/data';
+const OV_PATH = path.join(DATA_DIR, 'overrides.json');
+function ensureDir(){try{fs.mkdirSync(DATA_DIR,{recursive:true});}catch{}}
 function loadOverrides(){
   try{ ensureDir(); const s=fs.readFileSync(OV_PATH,'utf-8'); return JSON.parse(s||'{}'); }catch{ return {}; }
 }
