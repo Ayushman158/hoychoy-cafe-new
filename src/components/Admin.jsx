@@ -29,7 +29,8 @@ export default function Admin(){
   const [orderStatus,setOrderStatus]=useState({});
   const [toggling,setToggling]=useState(false);
   const [closureDuration,setClosureDuration]=useState('0');
-  const [customUntil,setCustomUntil]=useState('');
+  const [customDate,setCustomDate]=useState('');
+  const [customTime,setCustomTime]=useState('');
   const [orderFilter,setOrderFilter]=useState('ALL');
   const filteredOrders = useMemo(()=>{
     if(orderFilter==='DELIVERED') return (orders||[]).filter(o=>o.status==='DELIVERED');
@@ -117,12 +118,12 @@ export default function Admin(){
     setOwnerClosed(!open);
     try{
       let until = !open ? Number(closureDuration||'0') : 0;
-      if(!open && customUntil){
-        const ts = Date.parse(customUntil);
+      if(!open && (customDate||customTime)){
+        if(!customDate || !customTime){ setOwnerClosed(prev); setMsg('Please pick both date and time'); setToggling(false); return; }
+        const candidate = new Date(`${customDate}T${customTime}`);
+        const ts = candidate.getTime();
         const diff = ts - Date.now();
-        if(!Number.isFinite(ts) || diff<=0){
-          setOwnerClosed(prev); setMsg('Please choose a future date/time'); setToggling(false); return;
-        }
+        if(!Number.isFinite(ts) || diff<=0){ setOwnerClosed(prev); setMsg('Please choose a future date/time'); setToggling(false); return; }
         until = diff;
       }
       const r=await authedFetch(`${BACKEND_URL}/api/admin/set-app-open`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({open, until})});
@@ -280,7 +281,8 @@ export default function Admin(){
                 <option value="43200000">12 hours</option>
               </select>
               <span className="text-xs ml-2">or until</span>
-              <input type="datetime-local" className="bg-[#111] border border-[#222] rounded-xl p-1 text-xs" value={customUntil} onChange={e=>setCustomUntil(e.target.value)} />
+              <input type="date" className="bg-[#111] border border-[#222] rounded-xl p-1 text-xs" value={customDate} onChange={e=>setCustomDate(e.target.value)} />
+              <input type="time" className="bg-[#111] border border-[#222] rounded-xl p-1 text-xs" value={customTime} onChange={e=>setCustomTime(e.target.value)} />
             </span>
           )}
         </div>
