@@ -56,7 +56,7 @@ async function refreshOverridesFromStore(){ const v = await upGet('hc:overrides'
 function saveOverrides(obj){ overrides = obj; saveOverridesFS(obj); upSet('hc:overrides', obj); }
 const sessions = new Map();
 const ADMIN_TOKEN_TTL_HOURS = Number(process.env.ADMIN_TOKEN_TTL_HOURS||24);
-function createSession(){ const t=crypto.randomBytes(24).toString('hex'); const exp=Date.now()+ADMIN_TOKEN_TTL_HOURS*60*60*1000; sessions.set(t,{exp}); return t; }
+function createSession(ttlHours){ const t=crypto.randomBytes(24).toString('hex'); const hours = Number(ttlHours||ADMIN_TOKEN_TTL_HOURS)||ADMIN_TOKEN_TTL_HOURS; const exp=Date.now()+hours*60*60*1000; sessions.set(t,{exp, ttlHours:hours}); return t; }
 function isValidSession(t){ const s=sessions.get(t); if(!s) return false; if(Date.now()>s.exp){ sessions.delete(t); return false; } return true; }
 
 let tokenCache = { token: '', expiresAt: 0 };
@@ -176,7 +176,7 @@ function requireAdmin(req,res,next){
 }
 
 app.post('/api/admin/login', (req,res)=>{
-  const { email, password } = req.body||{};
+  const { email, password, remember } = req.body||{};
   if(!ADMIN_EMAIL || !ADMIN_PASSWORD) return res.status(500).json({error:'admin-not-configured'});
   const cid = getClientId(req);
   const rec = loginAttempts.get(cid)||{count:0, blockedUntil:0};
@@ -186,7 +186,7 @@ app.post('/api/admin/login', (req,res)=>{
   }
   if(email===ADMIN_EMAIL && password===ADMIN_PASSWORD){
     loginAttempts.delete(cid);
-    const token=createSession();
+    const token=createSession(remember ? 24*7 : ADMIN_TOKEN_TTL_HOURS);
     return res.json({ok:true, token});
   }
   rec.count = (rec.count||0)+1;
@@ -199,7 +199,7 @@ app.get('/api/admin/me', (req,res)=>{
   const hdr = req.headers['authorization']||'';
   const tok = hdr.startsWith('Bearer ') ? hdr.slice(7) : hdr;
   const ok = isValidSession(tok);
-  if(ok){ const s=sessions.get(tok); if(s) s.exp=Date.now()+ADMIN_TOKEN_TTL_HOURS*60*60*1000; }
+  if(ok){ const s=sessions.get(tok); if(s){ const hours = s.ttlHours||ADMIN_TOKEN_TTL_HOURS; s.exp=Date.now()+hours*60*60*1000; } }
   return res.json({authed:ok});
 });
 

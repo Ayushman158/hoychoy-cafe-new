@@ -9,6 +9,7 @@ export default function Admin(){
   const [password,setPassword]=useState('');
   const [showPwd,setShowPwd]=useState(false);
   const [logging,setLogging]=useState(false);
+  const [remember,setRemember]=useState(true);
   const [status,setStatus]=useState({open:true,reason:'OPEN'});
   const [items,setItems]=useState(()=>getMenu().items||[]);
   const categories = useMemo(()=>{
@@ -89,7 +90,7 @@ export default function Admin(){
   async function login(e){
     e.preventDefault(); setMsg(""); setLogging(true);
     try{
-      const r=await fetch(`${BACKEND_URL}/api/admin/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})});
+      const r=await fetch(`${BACKEND_URL}/api/admin/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password,remember})});
       const d=await r.json();
       if(!r.ok || !d.token){
         if(d && d.error==='rate_limited' && d.retryAt){
@@ -249,6 +250,10 @@ export default function Admin(){
               <input className="flex-1 bg-[#111] border border-[#222] rounded-xl p-2" placeholder="Password" type={showPwd?'text':'password'} value={password} onChange={e=>setPassword(e.target.value)} />
               <button type="button" className="btn" onClick={()=>setShowPwd(v=>!v)}>{showPwd?'Hide':'Show'}</button>
             </div>
+            <label className="flex items-center gap-2 text-xs">
+              <input type="checkbox" checked={remember} onChange={e=>setRemember(e.target.checked)} />
+              <span>Keep me signed in</span>
+            </label>
             <button className={`btn btn-primary ${logging?'btn-disabled':''}`} type="submit" disabled={logging}>Login</button>
           </form>
         </div>
