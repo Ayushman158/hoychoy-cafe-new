@@ -29,6 +29,7 @@ export default function Admin(){
   const [orderStatus,setOrderStatus]=useState({});
   const [toggling,setToggling]=useState(false);
   const [closureDuration,setClosureDuration]=useState('0');
+  const [customUntil,setCustomUntil]=useState('');
   const [orderFilter,setOrderFilter]=useState('ALL');
   const filteredOrders = useMemo(()=>{
     if(orderFilter==='DELIVERED') return (orders||[]).filter(o=>o.status==='DELIVERED');
@@ -115,7 +116,15 @@ export default function Admin(){
     const prev = ownerClosed;
     setOwnerClosed(!open);
     try{
-      const until = !open ? Number(closureDuration||'0') : 0;
+      let until = !open ? Number(closureDuration||'0') : 0;
+      if(!open && customUntil){
+        const ts = Date.parse(customUntil);
+        const diff = ts - Date.now();
+        if(!Number.isFinite(ts) || diff<=0){
+          setOwnerClosed(prev); setMsg('Please choose a future date/time'); setToggling(false); return;
+        }
+        until = diff;
+      }
       const r=await authedFetch(`${BACKEND_URL}/api/admin/set-app-open`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({open, until})});
       const d=await r.json();
       if(!r.ok){ setOwnerClosed(prev); setMsg('Failed to update app status'); setToggling(false); return; }
@@ -198,6 +207,17 @@ export default function Admin(){
       setMsg('Exported CSV');
     }catch{ setMsg('Export failed'); }
   }
+  async function removeItem(id){
+    if(!confirm('Delete this item from menu?')) return;
+    setMsg('');
+    try{
+      const r=await authedFetch(`${BACKEND_URL}/api/admin/remove-item`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
+      const d=await r.json();
+      if(!r.ok || !d.ok){ setMsg('Failed to delete item'); return; }
+      setItems(getMenu().items||[]);
+      setMsg('Item deleted');
+    }catch{ setMsg('Network error'); }
+  }
 
   async function addItem(e){
     e.preventDefault(); setMsg("");
@@ -259,6 +279,8 @@ export default function Admin(){
                 <option value="21600000">6 hours</option>
                 <option value="43200000">12 hours</option>
               </select>
+              <span className="text-xs ml-2">or until</span>
+              <input type="datetime-local" className="bg-[#111] border border-[#222] rounded-xl p-1 text-xs" value={customUntil} onChange={e=>setCustomUntil(e.target.value)} />
             </span>
           )}
         </div>
@@ -312,6 +334,14 @@ export default function Admin(){
               <span className="flex items-center gap-2">
                 <span className={`inline-block w-2 h-2 rounded-full ${it.available?'bg-success':'bg-error'}`}></span>
                 <button className="px-2 py-1 rounded-md bg-[#2a2a2a] border border-[#3a3a3a]" onClick={()=>toggleAvailability(it.id,!it.available)}>{it.available?'Mark Out':'Mark Available'}</button>
+                <button className="px-2 py-1 rounded-md border border-transparent text-[#ff8aa0] hover:bg-[#1a1a1a]" onClick={()=>removeItem(it.id)} aria-label="Delete">
+                  <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M8 6h8"/>
+                    <rect x="6" y="9" width="12" height="12" rx="2"/>
+                    <path d="M10 12v6"/>
+                    <path d="M14 12v6"/>
+                  </svg>
+                </button>
               </span>
             </li>
           ))}
