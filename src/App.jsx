@@ -5,6 +5,7 @@ import Confirm from "./components/Confirm.jsx";
 import Success from "./components/Success.jsx";
 import PaymentStatus from "./components/PaymentStatus.jsx";
 import Splash from "./components/Splash.jsx";
+import { BACKEND_URL } from "./config.js";
 import Privacy from "./components/Privacy.jsx";
 import Terms from "./components/Terms.jsx";
 import RefundCancellation from "./components/RefundCancellation.jsx";
@@ -29,6 +30,20 @@ export default function App(){
   useEffect(()=>{localStorage.setItem("hc_cart",JSON.stringify(cart));},[cart]);
 
   useEffect(()=>{ fetchMenuRemoteAndCache().catch(()=>{}); fetchBackendOverridesAndCache().catch(()=>{}); },[]);
+  useEffect(()=>{
+    let cancelled=false;
+    (async()=>{
+      try{
+        await Promise.all([
+          fetchBackendOverridesAndCache(),
+          fetchMenuRemoteAndCache(),
+          fetch(`${BACKEND_URL}/api/app-status`).catch(()=>({}))
+        ]);
+      }catch{}
+      if(!cancelled){ setView(v=> (v==='splash' ? 'menu' : v)); }
+    })();
+    return ()=>{ cancelled=true; };
+  },[]);
   useEffect(()=>{
     const params = new URLSearchParams(window.location.search);
     const id = params.get('merchantTransactionId');

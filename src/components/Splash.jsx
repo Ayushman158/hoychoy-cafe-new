@@ -1,15 +1,11 @@
-import React, { useEffect } from "react";
+import React from "react";
 
 export default function Splash({onContinue}){
-  useEffect(()=>{
-    const t=setTimeout(()=>onContinue(),1800);
-    return ()=>clearTimeout(t);
-  },[onContinue]);
 
   const glow = { textShadow: "0 0 22px rgba(245,200,74,0.6), 0 0 8px rgba(245,200,74,0.5)" };
 
   return (
-    <section onClick={onContinue} className="min-h-screen w-full relative overflow-hidden flex flex-col items-center justify-center bg-[#0b0b0b] text-white">
+    <section className="min-h-screen w-full relative overflow-hidden flex flex-col items-center justify-center bg-[#0b0b0b] text-white">
       <style>{`
         @keyframes hcDot{0%{opacity:.3}50%{opacity:1}100%{opacity:.3}}
         @keyframes hcFade{0%{opacity:0; transform:translateY(8px) scale(.98)}100%{opacity:1; transform:translateY(0) scale(1)}}
