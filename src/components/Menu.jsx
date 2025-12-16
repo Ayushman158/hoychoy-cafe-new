@@ -270,7 +270,8 @@ const NonVegIcon = () => (
         type="button"
         onClick={handleProceed}
         disabled={appReason==='CLOSED_BY_OWNER'}
-        className={`fixed right-3 bottom-32 z-50 rounded-full px-3 py-2 font-bold flex items-center gap-2 shadow-xl ${appReason==='CLOSED_BY_OWNER' ? 'opacity-60 cursor-not-allowed bg-[#333] text-[#999]' : 'bg-primary text-black'}`}
+        className={`fixed right-3 z-30 rounded-full px-3 py-2 font-bold flex items-center gap-2 shadow-xl ${appReason==='CLOSED_BY_OWNER' ? 'opacity-60 cursor-not-allowed bg-[#333] text-[#999]' : 'bg-primary text-black'}`}
+        style={{bottom: 'calc(120px + env(safe-area-inset-bottom, 0px))'}}
       >
         <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
           <circle cx="9" cy="20" r="1"/><circle cx="17" cy="20" r="1"/>
