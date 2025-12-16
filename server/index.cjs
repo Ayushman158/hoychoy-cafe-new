@@ -161,10 +161,9 @@ const orderRecon = new Map();
 function isWithinHours(){ const h=new Date().getHours(); return h>=12 && h<21; }
 app.get('/api/app-status', async (req,res)=>{
   try{ await refreshOverridesFromStore(); }catch{}
-  const within = isWithinHours();
-  const closed = (overrides.appClosed===true && (!overrides.closedUntil || Date.now() < overrides.closedUntil)) || process.env.APP_CLOSED==='1';
-  const open = within && !closed;
-  const reason = closed ? 'CLOSED_BY_OWNER' : (within ? 'OPEN' : 'OUT_OF_HOURS');
+  const closed = overrides.appClosed===true || process.env.APP_CLOSED==='1';
+  const open = !closed;
+  const reason = closed ? 'CLOSED_BY_OWNER' : 'OPEN';
   res.json({open, reason, ownerClosed: overrides.appClosed===true, closedUntil: overrides.closedUntil||0});
 });
 
