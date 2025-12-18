@@ -86,10 +86,10 @@
     {"id":"sriracha_noodles_veg","name":"Sriracha Noodles (Veg)","price":149,"veg":true,"category":"Noodles / Chowmein","available":true},
 
     {"id":"spaghetti_aglio","name":"Spaghetti Aglio E Olio","price":349,"veg":true,"category":"Pasta & Chopsuey","available":true},
-    {"id":"penne_arrabbiata_veg","name":"Penne Arrabbiata (Veg)","price":249,"veg":true,"category":"Pasta & Chopsuey","available":true},
-    {"id":"penne_arrabbiata_chicken","name":"Penne Arrabbiata (Chicken)","price":299,"veg":false,"category":"Pasta & Chopsuey","available":true},
+    {"id":"penne_alfredo_veg","name":"Penne Alfredo (Veg)","price":249,"veg":true,"category":"Pasta & Chopsuey","available":true},
+    {"id":"penne_alfredo_chicken","name":"Penne Alfredo (Chicken)","price":299,"veg":false,"category":"Pasta & Chopsuey","available":true},
     {"id":"mac_white_sauce","name":"Cheese White Sauce Macaroni","price":379,"veg":true,"category":"Pasta & Chopsuey","available":true},
-    {"id":"penne_alfredo_chicken","name":"Penne Alfredo (Chicken)","price":349,"veg":false,"category":"Pasta & Chopsuey","available":true},
+    {"id":"penne_alfredo_chicken_sp","name":"Penne Alfredo (Chicken)","price":349,"veg":false,"category":"Pasta & Chopsuey","available":true},
     {"id":"roasted_chicken_fusilli","name":"Roasted Chicken Fusilli","price":299,"veg":false,"category":"Pasta & Chopsuey","available":true},
     {"id":"mafias_meal","name":"The Mafia’s Meal","price":349,"veg":false,"category":"Pasta & Chopsuey","available":true},
     {"id":"moroccan_spaghetti_meatballs","name":"Moroccan Spaghetti Meat Balls","price":379,"veg":false,"category":"Pasta & Chopsuey","available":true},
