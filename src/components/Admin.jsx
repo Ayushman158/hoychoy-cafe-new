@@ -457,10 +457,19 @@ export default function Admin(){
                     <div className="font-semibold">WhatsApp Update</div>
                     <div className="grid gap-2 mt-1">
                       <select className="bg-[#111] border border-[#222] rounded-xl p-2 text-sm" value={waTemplate} onChange={e=>setWaTemplate(e.target.value)}>
-                        <option>Your order has been placed. We will deliver within 15 minutes.</option>
-                        <option>Your order has been placed. Estimated delivery time: 30 minutes.</option>
-                        <option>Due to high order volume, we will try to deliver your order within 45 minutes.</option>
-                        <option>Due to heavy traffic in our restaurant, delivery may take up to 1 hour.</option>
+                        <option>Thank you for ordering from HoyChoy Café! Your order is confirmed. Estimated delivery: 15–20 minutes.</option>
+                        <option>Thank you for ordering from HoyChoy Café! Estimated delivery: ~30 minutes.</option>
+                        <option>Thank you for ordering from HoyChoy Café! Due to high order volume, delivery may take up to 45 minutes. We appreciate your patience.</option>
+                        <option>Thank you for ordering from HoyChoy Café! Due to heavy traffic, delivery may take up to 1 hour. We’ll keep you updated.</option>
+                        <option>Due to heavy traffic in our café, delivery may take longer than usual. We sincerely apologize and appreciate your patience.</option>
+                        <option>Thank you for choosing HoyChoy Café! Your order is being prepared. Our rider will be on the way shortly.</option>
+                        <option>Thank you for ordering from HoyChoy Café! Your order is out for delivery.</option>
+                        <option>Thank you for ordering from HoyChoy Café. Your order has reached nearby and will arrive shortly.</option>
+                        <option>We’re running a little behind today—your order may take an extra 20 minutes. Thank you for your patience. — HoyChoy Café</option>
+                        <option>{`We attempted to call you but couldn’t connect. Kindly confirm your location here or call us at ${OWNER_PHONE}. — HoyChoy Café`}</option>
+                        <option>Your order is ready for pickup at HoyChoy Café. You may collect it anytime within the next 20 minutes. Thank you!</option>
+                        <option>We have received your order and shared it with our kitchen team. Thank you for choosing HoyChoy Café.</option>
+                        <option>If you have any special instructions for this order, please reply to this message. — HoyChoy Café</option>
                         <option>Custom…</option>
                       </select>
                       {waTemplate==='Custom…' && (
