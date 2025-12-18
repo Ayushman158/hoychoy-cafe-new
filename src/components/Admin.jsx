@@ -33,6 +33,8 @@ export default function Admin(){
   const [customDate,setCustomDate]=useState('');
   const [customTime,setCustomTime]=useState('');
   const [orderFilter,setOrderFilter]=useState('ALL');
+  const [waTemplate,setWaTemplate]=useState('Your order has been placed. We will deliver within 15 minutes.');
+  const [waCustom,setWaCustom]=useState('');
   const filteredOrders = useMemo(()=>{
     if(orderFilter==='DELIVERED') return (orders||[]).filter(o=>o.status==='DELIVERED');
     if(orderFilter==='NEW') return (orders||[]).filter(o=>o.status!=='DELIVERED');
@@ -450,6 +452,32 @@ export default function Admin(){
                         <li key={i}>• {it.item?.name} ×{it.qty} — ₹{it.item?.price}</li>
                       ))}
                     </ul>
+                  </div>
+                  <div className="mt-3">
+                    <div className="font-semibold">WhatsApp Update</div>
+                    <div className="grid gap-2 mt-1">
+                      <select className="bg-[#111] border border-[#222] rounded-xl p-2 text-sm" value={waTemplate} onChange={e=>setWaTemplate(e.target.value)}>
+                        <option>Your order has been placed. We will deliver within 15 minutes.</option>
+                        <option>Your order has been placed. Estimated delivery time: 30 minutes.</option>
+                        <option>Due to high order volume, we will try to deliver your order within 45 minutes.</option>
+                        <option>Due to heavy traffic in our restaurant, delivery may take up to 1 hour.</option>
+                        <option>Custom…</option>
+                      </select>
+                      {waTemplate==='Custom…' && (
+                        <textarea className="bg-[#111] border border-[#222] rounded-xl p-2 text-sm min-h-[60px]" placeholder="Type a custom message" value={waCustom} onChange={e=>setWaCustom(e.target.value)} />
+                      )}
+                      <div className="text-xs text-muted">Opens WhatsApp with pre‑filled text; no contact saving needed.</div>
+                      <div>
+                        <button className="btn" type="button" onClick={()=>{
+                          const raw=(selected.customer?.phone||'').replace(/[^\d]/g,'');
+                          const phone = raw.length===10 ? `91${raw}` : raw; // default to India code if 10 digits
+                          if(!phone){ setMsg('No customer phone number'); return; }
+                          const text = waTemplate==='Custom…' ? (waCustom||'Your order has been placed.') : waTemplate;
+                          const url = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
+                          window.open(url,'_blank');
+                        }}>Send WhatsApp Update</button>
+                      </div>
+                    </div>
                   </div>
                   <div className="flex gap-2 mt-3">
                     <a className="btn" href={`tel:${selected.customer?.phone}`}>Call</a>
