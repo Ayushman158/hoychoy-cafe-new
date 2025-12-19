@@ -34,11 +34,10 @@ export default function App(){
     let cancelled=false;
     (async()=>{
       try{
-        await Promise.all([
-          fetchBackendOverridesAndCache(),
-          fetchMenuRemoteAndCache(),
-          fetch(`${BACKEND_URL}/api/app-status`).catch(()=>({}))
-        ]);
+        const menuP = fetchMenuRemoteAndCache().catch(()=>{});
+        const overridesP = fetchBackendOverridesAndCache().catch(()=>{});
+        const statusP = fetch(`${BACKEND_URL}/api/app-status`).catch(()=>({}));
+        await Promise.race([menuP, new Promise(res=>setTimeout(res,2500))]);
       }catch{}
       if(!cancelled){ setView(v=> (v==='splash' ? 'menu' : v)); }
     })();

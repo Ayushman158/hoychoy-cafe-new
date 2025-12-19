@@ -428,7 +428,7 @@ export default function Admin(){
 
           {authed && selected && (
             <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center" onClick={()=>setSelected(null)}>
-              <div className="bg-[#0f0f0f] border border-[#222] rounded-xl p-4 w-[600px] max-w-[95%]" onClick={e=>e.stopPropagation()}>
+              <div className="bg-[#0f0f0f] border border-[#222] rounded-xl p-4 w-[600px] max-w-[95%] max-h-[80vh] overflow-y-auto" onClick={e=>e.stopPropagation()}>
                 <div className="section-title flex items-center justify-between"><span>Order #{selected.id}</span><button className="btn" onClick={()=>setSelected(null)}>✕</button></div>
                 <div className="mt-2">
                   <div className="row"><span>Status</span><span className="font-bold">{selected.status||'NEW'}</span></div>
@@ -453,23 +453,25 @@ export default function Admin(){
                       ))}
                     </ul>
                   </div>
-                  <div className="mt-3">
-                    <div className="font-semibold">WhatsApp Update</div>
+                  <div className="mt-3 border border-[#222] rounded-xl p-3 bg-[#080808] space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="font-semibold text-sm">WhatsApp Update</div>
+                    </div>
                     <div className="grid gap-2 mt-1">
-                      <select className="bg-[#111] border border-[#222] rounded-xl p-2 text-sm" value={waTemplate} onChange={e=>setWaTemplate(e.target.value)}>
-                        <option>Thank you for ordering from HoyChoy Café! Your order is confirmed. Estimated delivery: 15–20 minutes.</option>
-                        <option>Thank you for ordering from HoyChoy Café! Estimated delivery: ~30 minutes.</option>
-                        <option>Thank you for ordering from HoyChoy Café! Due to high order volume, delivery may take up to 45 minutes. We appreciate your patience.</option>
-                        <option>Thank you for ordering from HoyChoy Café! Due to heavy traffic, delivery may take up to 1 hour. We’ll keep you updated.</option>
-                        <option>Due to heavy traffic in our café, delivery may take longer than usual. We sincerely apologize and appreciate your patience.</option>
-                        <option>Thank you for choosing HoyChoy Café! Your order is being prepared. Our rider will be on the way shortly.</option>
-                        <option>Thank you for ordering from HoyChoy Café! Your order is out for delivery.</option>
-                        <option>Thank you for ordering from HoyChoy Café. Your order has reached nearby and will arrive shortly.</option>
-                        <option>We’re running a little behind today—your order may take an extra 20 minutes. Thank you for your patience. — HoyChoy Café</option>
-                        <option>{`We attempted to call you but couldn’t connect. Kindly confirm your location here or call us at ${OWNER_PHONE}. — HoyChoy Café`}</option>
-                        <option>Your order is ready for pickup at HoyChoy Café. You may collect it anytime within the next 20 minutes. Thank you!</option>
-                        <option>We have received your order and shared it with our kitchen team. Thank you for choosing HoyChoy Café.</option>
-                        <option>If you have any special instructions for this order, please reply to this message. — HoyChoy Café</option>
+                      <select className="w-full bg-[#111] border border-[#222] rounded-xl p-2 text-sm" value={waTemplate} onChange={e=>setWaTemplate(e.target.value)}>
+                        <option value="Thank you for ordering from HoyChoy Café! Your order is confirmed. Estimated delivery: 15–20 minutes.">Confirm: 15–20 minutes</option>
+                        <option value="Thank you for ordering from HoyChoy Café! Estimated delivery: ~30 minutes.">Confirm: ~30 minutes</option>
+                        <option value="Thank you for ordering from HoyChoy Café! Due to high order volume, delivery may take up to 45 minutes. We appreciate your patience.">Delay: up to 45 minutes</option>
+                        <option value="Thank you for ordering from HoyChoy Café! Due to heavy traffic, delivery may take up to 1 hour. We’ll keep you updated.">Delay: up to 1 hour</option>
+                        <option value="Due to heavy traffic in our café, delivery may take longer than usual. We sincerely apologize and appreciate your patience.">Delay: heavy café traffic</option>
+                        <option value="Thank you for choosing HoyChoy Café! Your order is being prepared. Our rider will be on the way shortly.">Kitchen: preparing now</option>
+                        <option value="Thank you for ordering from HoyChoy Café! Your order is out for delivery.">Status: out for delivery</option>
+                        <option value="Thank you for ordering from HoyChoy Café. Your order has reached nearby and will arrive shortly.">Status: nearby</option>
+                        <option value="We’re running a little behind today—your order may take an extra 20 minutes. Thank you for your patience. — HoyChoy Café">Delay: extra 20 minutes</option>
+                        <option value={`We attempted to call you but couldn’t connect. Kindly confirm your location here or call us at ${OWNER_PHONE}. — HoyChoy Café`}>Action: could not connect</option>
+                        <option value="Your order is ready for pickup at HoyChoy Café. You may collect it anytime within the next 20 minutes. Thank you!">Pickup: ready at café</option>
+                        <option value="We have received your order and shared it with our kitchen team. Thank you for choosing HoyChoy Café.">Info: kitchen notified</option>
+                        <option value="If you have any special instructions for this order, please reply to this message. — HoyChoy Café">Info: ask for instructions</option>
                         <option>Custom…</option>
                       </select>
                       {waTemplate==='Custom…' && (

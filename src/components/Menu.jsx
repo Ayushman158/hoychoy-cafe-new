@@ -44,6 +44,7 @@ export default function Menu({cart, setCart, onProceed}){
   const [query,setQuery]=useState("");
   const [appOpen,setAppOpen]=useState(true);
   const [appReason,setAppReason]=useState('OPEN');
+  const [statusLoading,setStatusLoading]=useState(true);
   const DEFAULT_CLOSING_MSG = '😔 Sorry, our restaurant is closed today. Online orders are available 12:00–9:00 PM.';
   const [closingMsg,setClosingMsg]=useState("");
   const VegIcon = () => (
@@ -122,6 +123,7 @@ const NonVegIcon = () => (
     async function load(){
       try{ const r=await fetch(`${BACKEND_URL}/api/app-status`); const d=await r.json(); if(r.ok){ setAppOpen(!!d.open); setAppReason(d.reason||'OPEN'); } }
       catch{}
+      finally{ setStatusLoading(false); }
     }
     load();
   },[]);
@@ -170,7 +172,10 @@ const NonVegIcon = () => (
               )}
             </div>
           </div>
-          {!appOpen && appReason==='CLOSED_BY_OWNER' && (
+          {statusLoading && (
+            <div className="mt-3 p-2 border border-[#222] rounded-xl bg-[#1a1a1a] text-[#bdbdbd]">Checking restaurant status…</div>
+          )}
+          {!statusLoading && !appOpen && appReason==='CLOSED_BY_OWNER' && (
             <div className="mt-3 p-2 border border-[#222] rounded-xl bg-[#1a1a1a] text-[#f5c84a]">
               <span>{closingMsg || DEFAULT_CLOSING_MSG}</span>
             </div>
