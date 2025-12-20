@@ -144,7 +144,7 @@ const NonVegIcon = () => (
 
   return (
     <main className="max-w-[600px] mx-auto px-4 pb-40">
-        <div className="sticky top-0 z-[50] bg-[#0f0f0f] pt-4 pb-3 border-b border-[#222]">
+        <div className="sticky z-[50] bg-[#0f0f0f] pt-4 pb-3 border-b border-[#222]" style={{top:'env(safe-area-inset-top, 0px)'}}>
           <div className="flex items-center justify-between gap-2">
             <span className="text-2xl font-extrabold">
               <span>Hoy</span>
