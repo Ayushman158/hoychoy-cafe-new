@@ -54,7 +54,7 @@ export default function Menu({cart, setCart, onProceed}){
     update();
     window.addEventListener('resize', update);
     return ()=> window.removeEventListener('resize', update);
-  },[statusLoading,filters,cat,query,categories,appOpen,appReason]);
+  },[statusLoading,filters,cat,query,appOpen,appReason]);
   const VegIcon = () => (
   <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" strokeWidth="2">
     <rect
