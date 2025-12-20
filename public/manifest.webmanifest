@@ -8,7 +8,7 @@
   "theme_color": "#0A0A0A",
   "description": "Order and explore the menu at HoyChoy Café — Sarupathar.",
   "icons": [
-    { "src": "https://ibb.co/sdqXY0Xf", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "https://ibb.co/sdqXY0Xf", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+    { "src": "https://i.ibb.co/21jszynL/appstore.jpg", "sizes": "192x192", "type": "image/jpeg", "purpose": "any" },
+    { "src": "https://i.ibb.co/21jszynL/appstore.jpg", "sizes": "512x512", "type": "image/jpeg", "purpose": "any" }
   ]
 }
