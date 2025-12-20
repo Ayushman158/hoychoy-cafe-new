@@ -33,7 +33,7 @@ function MapPinIcon(){
 import React from "react";
 export default function Success({orderId,summary,onBack}){
   return (
-    <section className="max-w-[600px] mx-auto px-4">
+    <section className="max-w-[600px] mx-auto px-4 pt-[calc(env(safe-area-inset-top)+8px)] md:pt-0">
       <div className="mt-5"><CheckCircleIcon /></div>
       <div className="text-center font-bold text-2xl mt-2">Order Placed Successfully</div>
       <div className="text-center text-muted text-sm mt-2">Payment will be verified automatically via PhonePe gateway. We’ll notify you when confirmed.</div>

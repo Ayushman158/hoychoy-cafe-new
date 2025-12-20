@@ -24,7 +24,7 @@ export default function Reservation({onBack}){
   }
 
   return (
-    <main className="max-w-[600px] mx-auto px-4 py-6">
+    <main className="max-w-[600px] mx-auto px-4 pb-6 pt-[calc(env(safe-area-inset-top)+8px)] md:pt-6">
       <button className="chip" onClick={onBack}>← Back to Menu</button>
       <h1 className="text-2xl font-bold mt-4">Reservations</h1>
       <p className="text-[#cfcfcf] mt-1">Enquire for birthday parties and events. We will confirm availability and details.</p>

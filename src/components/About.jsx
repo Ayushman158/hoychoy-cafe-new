@@ -2,7 +2,7 @@ import React from "react";
 
 export default function About({onBack}){
   return (
-    <main className="max-w-[600px] mx-auto px-4 py-6">
+    <main className="max-w-[600px] mx-auto px-4 pb-6 pt-[calc(env(safe-area-inset-top)+8px)] md:pt-6">
       <button className="chip" onClick={onBack}>← Back to Menu</button>
       <h1 className="text-3xl font-extrabold mt-4">
         <span>Hoy</span>

@@ -10,7 +10,7 @@ function CheckCircleIcon(){
 
 export default function Confirm({name,phone,total,onBack,onConfirm}){
   return (
-    <section className="max-w-[600px] mx-auto px-4">
+    <section className="max-w-[600px] mx-auto px-4 pt-[calc(env(safe-area-inset-top)+8px)] md:pt-0">
       <div className="card border-primary mt-8">
         <div className="text-center"><CheckCircleIcon /></div>
         <div className="text-center font-bold text-xl mt-2">Confirm Your Order?</div>
