@@ -167,6 +167,19 @@ const NonVegIcon = () => (
                     <a href="/" className="block px-2 py-2 rounded hover:bg-[#1a1a1a]">Main Menu</a>
                     <a href="/about" className="block px-2 py-2 rounded hover:bg-[#1a1a1a]">About</a>
                     <a href="/reserve" className="block px-2 py-2 rounded hover:bg-[#1a1a1a]">Reservations</a>
+                    <button
+                      className="text-left block px-2 py-2 rounded hover:bg-[#1a1a1a]"
+                      onClick={()=>{
+                        const bip = window.__bip;
+                        if(bip){ bip.prompt(); } else {
+                          const ua = navigator.userAgent || "";
+                          const isiOS = /iPhone|iPad|iPod/.test(ua);
+                          const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
+                          if(isiOS && isSafari){ alert("Tap Share, then 'Add to Home Screen' to install."); } else { alert("Use browser menu: Install app or Add to Home Screen."); }
+                        }
+                        setMenuOpen(false);
+                      }}
+                    >Install App</button>
                   </div>
                 </>
               )}

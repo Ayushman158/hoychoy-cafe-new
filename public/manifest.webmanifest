@@ -1,0 +1,14 @@
+{
+  "name": "HoyChoy Café",
+  "short_name": "HoyChoy Café",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0A0A0A",
+  "theme_color": "#0A0A0A",
+  "description": "Order and explore the menu at HoyChoy Café — Sarupathar.",
+  "icons": [
+    { "src": "https://ibb.co/sdqXY0Xf", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "https://ibb.co/sdqXY0Xf", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}
