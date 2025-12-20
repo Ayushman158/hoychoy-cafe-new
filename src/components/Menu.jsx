@@ -49,12 +49,29 @@ export default function Menu({cart, setCart, onProceed}){
   const [closingMsg,setClosingMsg]=useState("");
   const headerRef = React.useRef(null);
   const [headerH,setHeaderH] = useState(0);
+  const [showIosHint, setShowIosHint] = useState(false);
   useLayoutEffect(()=>{
     const update=()=>{ if(headerRef.current){ setHeaderH(headerRef.current.offsetHeight||0); } };
     update();
     window.addEventListener('resize', update);
     return ()=> window.removeEventListener('resize', update);
   },[statusLoading,filters,cat,query,appOpen,appReason]);
+
+  useEffect(()=>{
+    try{
+      const ua = navigator.userAgent || "";
+      const isiOS = /iPhone|iPad|iPod/.test(ua);
+      const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
+      const installed = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || (navigator && navigator.standalone);
+      const dismissed = (typeof localStorage!=='undefined') && localStorage.getItem('hc_ios_install_hint') === '1';
+      if(isiOS && isSafari && !installed && !dismissed){ setShowIosHint(true); }
+    }catch{}
+  },[]);
+
+  function dismissIosHint(){
+    setShowIosHint(false);
+    try{ localStorage.setItem('hc_ios_install_hint','1'); }catch{}
+  }
   const VegIcon = () => (
   <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" strokeWidth="2">
     <rect
@@ -200,6 +217,18 @@ const NonVegIcon = () => (
           {!statusLoading && !appOpen && appReason==='CLOSED_BY_OWNER' && (
             <div className="mt-3 p-2 border border-[#222] rounded-xl bg-[#1a1a1a] text-[#f5c84a]">
               <span>{closingMsg || DEFAULT_CLOSING_MSG}</span>
+            </div>
+          )}
+          {showIosHint && (
+            <div className="mt-2 bg-[#1a1a1a] border border-[#222] rounded-xl p-2 text-xs text-[#cfcfcf]">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-white">Install on iPhone</span>
+                <button onClick={dismissIosHint} className="px-2 py-1 rounded-lg border border-[#222]">✕</button>
+              </div>
+              <div className="mt-2 flex items-center gap-3">
+                <span className="inline-flex items-center gap-1 text-[#e5e5e5]"><svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v8"/><path d="M9 8l3-3 3 3"/><path d="M4 13v6h16v-6"/></svg> Share</span>
+                <span className="inline-flex items-center gap-1 text-[#e5e5e5]"><svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M12 8v8"/><path d="M8 12h8"/></svg> Add to Home Screen</span>
+              </div>
             </div>
           )}
           <div className="mt-3">
