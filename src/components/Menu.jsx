@@ -151,8 +151,9 @@ const NonVegIcon = () => (
   
 
   return (
-    <main className="max-w-[600px] mx-auto px-4 pb-40" style={{paddingTop: 'calc(env(safe-area-inset-top, 0px) + '+headerH+'px)'}}>
-        <div ref={headerRef} className="fixed left-0 right-0 z-[50] bg-[#0f0f0f] pt-4 pb-3 border-b border-[#222]" style={{top:'env(safe-area-inset-top, 0px)'}}>
+    <main className="max-w-[600px] mx-auto px-5 md:px-4 pb-40" style={{paddingTop: 'calc(env(safe-area-inset-top, 0px) + '+headerH+'px)'}}>
+        <div className="hc-safe-buffer" aria-hidden="true"></div>
+        <div ref={headerRef} className="fixed left-0 right-0 z-[50] bg-[#0f0f0f] pt-4 pb-3 border-b border-[#222] px-5 md:px-4" style={{top:'env(safe-area-inset-top, 0px)'}}>
           <div className="flex items-center justify-between gap-2">
             <span className="text-2xl font-extrabold">
               <span>Hoy</span>
