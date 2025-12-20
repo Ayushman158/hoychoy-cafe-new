@@ -23,8 +23,6 @@ export default function Splash({onContinue}){
         <div className="mt-3 text-sm md:text-base text-[#cfcfcf]">Golpo, Ghorua Flavour & Good Vibes</div>
       </div>
 
-      <div className="mt-4 text-xs md:text-sm text-[#bdbdbd]">Fetching menu and restaurant status…</div>
-
       <div className="mt-6 flex items-center gap-2">
         <span className="w-2 h-2 rounded-full bg-[#f5c84a]" style={{animation:"hcDot 1.2s infinite", animationDelay:"0s"}}></span>
         <span className="w-2 h-2 rounded-full bg-[#f5c84a]/70" style={{animation:"hcDot 1.2s infinite", animationDelay:"0.2s"}}></span>
