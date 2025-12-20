@@ -249,16 +249,13 @@ const NonVegIcon = () => (
         {showIosHint && (
           <div className="mt-2 bg-[#1a1a1a] border border-[#222] rounded-xl p-2 text-xs text-[#cfcfcf]">
             <div className="flex items-center justify-between">
-              <span className="font-semibold text-white">Install on iPhone (Safari)</span>
+              <span className="font-semibold text-white">Install on iPhone</span>
               <button onClick={dismissIosHint} className="px-2 py-1 rounded-lg border border-[#222]">✕</button>
             </div>
-            <div className="mt-2 text-[#e5e5e5]">Install from your browser menu:</div>
-            <ol className="list-decimal pl-5 mt-1 text-[#e5e5e5]">
-              <li>Open this page in Safari</li>
-              <li>Tap the Share button on your browser</li>
-              <li>Select “Add to Home Screen”</li>
-            </ol>
-            <div className="mt-2 text-[#bdbdbd]">Note: This action is in Safari’s menu, not inside the app.</div>
+            <div className="mt-2 flex items-center gap-3">
+              <span className="inline-flex items-center gap-1 text-[#e5e5e5]"><svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v8"/><path d="M9 8l3-3 3 3"/><path d="M4 13v6h16v-6"/></svg> Share</span>
+              <span className="inline-flex items-center gap-1 text-[#e5e5e5]"><svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M12 8v8"/><path d="M8 12h8"/></svg> Add to Home Screen</span>
+            </div>
           </div>
         )}
         {showAndroidHint && (
