@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useLayoutEffect } from "react";
 import { getMenu } from "../utils/menu.js";
 import { BACKEND_URL } from "../config.js";
 
@@ -47,6 +47,14 @@ export default function Menu({cart, setCart, onProceed}){
   const [statusLoading,setStatusLoading]=useState(true);
   const DEFAULT_CLOSING_MSG = '😔 Sorry, our restaurant is closed today. Online orders are available 12:00–9:00 PM.';
   const [closingMsg,setClosingMsg]=useState("");
+  const headerRef = React.useRef(null);
+  const [headerH,setHeaderH] = useState(0);
+  useLayoutEffect(()=>{
+    const update=()=>{ if(headerRef.current){ setHeaderH(headerRef.current.offsetHeight||0); } };
+    update();
+    window.addEventListener('resize', update);
+    return ()=> window.removeEventListener('resize', update);
+  },[statusLoading,filters,cat,query,categories,appOpen,appReason]);
   const VegIcon = () => (
   <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" strokeWidth="2">
     <rect
@@ -143,8 +151,8 @@ const NonVegIcon = () => (
   
 
   return (
-    <main className="max-w-[600px] mx-auto px-4 pb-40">
-        <div className="sticky z-[50] bg-[#0f0f0f] pt-4 pb-3 border-b border-[#222]" style={{top:'env(safe-area-inset-top, 0px)'}}>
+    <main className="max-w-[600px] mx-auto px-4 pb-40" style={{paddingTop: 'calc(env(safe-area-inset-top, 0px) + '+headerH+'px)'}}>
+        <div ref={headerRef} className="fixed left-0 right-0 z-[50] bg-[#0f0f0f] pt-4 pb-3 border-b border-[#222]" style={{top:'env(safe-area-inset-top, 0px)'}}>
           <div className="flex items-center justify-between gap-2">
             <span className="text-2xl font-extrabold">
               <span>Hoy</span>
