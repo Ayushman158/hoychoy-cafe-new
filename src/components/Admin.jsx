@@ -24,6 +24,11 @@ export default function Admin(){
   const [category,setCategory]=useState("Misc");
   const [msg,setMsg]=useState("");
   const [orders,setOrders]=useState([]);
+  const [notifs,setNotifs]=useState([]);
+  const [unread,setUnread]=useState(0);
+  const [showBell,setShowBell]=useState(false);
+  const [kitchen,setKitchen]=useState(false);
+  const [lastAlert,setLastAlert]=useState(null);
   const [selected,setSelected]=useState(null);
   const [ownerClosed,setOwnerClosed]=useState(false);
   const [closingMessage,setClosingMessage]=useState("");
@@ -87,7 +92,16 @@ export default function Admin(){
             const d = JSON.parse(ev.data||'{}');
             if(d.type==='init' && Array.isArray(d.orders)) setOrders(d.orders);
             if(d.type==='order.created' && d.order) setOrders((prev)=>[d.order, ...prev]);
-            if(d.type==='order.updated' && d.order) setOrders((prev)=>prev.map(x=>x.id===d.order.id?d.order:x));
+            if(d.type==='order.updated' && d.order){
+              setOrders((prev)=>prev.map(x=>x.id===d.order.id?d.order:x));
+              if(d.order.status==='PAID'){
+                const info = {id:d.order.id, total:Number(d.order.total||0), ts:Date.now()};
+                setNotifs(prev=>[{title:'New paid order', body:`#${info.id} • ₹${info.total}`, ts:info.ts}, ...prev].slice(0,20));
+                setUnread(u=>u+1);
+                try{ if(Notification && Notification.permission==='granted'){ new Notification('New paid order', { body:`#${info.id} • ₹${info.total}` }); } }catch{}
+                if(kitchen){ setLastAlert(d.order); try{ const a=new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABYAAAAgAAAAAAA=' ); a.play().catch(()=>{});}catch{} }
+              }
+            }
           }catch{}
         };
         es.onerror = ()=>{ try{ es.close(); }catch{}; setMsg('Connection lost. Reconnecting…'); t=setTimeout(open,2000); };
@@ -252,8 +266,43 @@ export default function Admin(){
     <section className="max-w-[900px] mx-auto px-4 py-6">
       <div className="flex items-center justify-between">
         <div className="font-bold text-lg">Admin Panel</div>
-        {authed && <button className="btn" onClick={logout}>Logout</button>}
+        <div className="flex items-center gap-2">
+          {authed && (
+            <button className="relative btn" type="button" onClick={()=>setShowBell(s=>!s)} aria-label="Notifications">🔔{unread>0 && <span className="absolute -top-1 -right-1 bg-[#f5c84a] text-black text-xs rounded-full px-1">{unread}</span>}</button>
+          )}
+          {authed && <button className="btn" type="button" onClick={()=>{ try{ Notification && Notification.requestPermission && Notification.requestPermission(); }catch{} }}>Enable Notifications</button>}
+          {authed && <button className="btn" onClick={()=>setKitchen(k=>!k)}>{kitchen?'Exit Kitchen':'Kitchen Mode'}</button>}
+          {authed && <button className="btn" onClick={logout}>Logout</button>}
+        </div>
       </div>
+      {showBell && (
+        <div className="fixed right-4 top-14 z-[60] w-72 bg-[#0f0f0f] border border-[#222] rounded-xl p-2 shadow-lg">
+          <div className="flex items-center justify-between">
+            <div className="font-bold">Notifications</div>
+            <button className="text-xs underline" type="button" onClick={()=>{setUnread(0); setShowBell(false);}}>Mark all read</button>
+          </div>
+          <ul className="max-h-64 overflow-auto mt-2">
+            {notifs.map((n,i)=>(
+              <li key={i} className="row"><span>{n.title}</span><span className="text-sm">{n.body}</span></li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {kitchen && lastAlert && (
+        <div className="fixed inset-0 bg-black/90 z-[70] flex flex-col items-center justify-center">
+          <div className="text-2xl font-extrabold">New Paid Order</div>
+          <div className="mt-2">#{lastAlert.id} • ₹{Number(lastAlert.total||0)}</div>
+          <div className="mt-3">
+            <button className="btn btn-primary" type="button" onClick={async()=>{
+              try{
+                const r=await authedFetch(`${BACKEND_URL}/api/admin/order-accept`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:lastAlert.id})});
+                const d=await r.json();
+                if(r.ok && d && d.ok){ setOrders(prev=>prev.map(x=>x.id===d.order.id?d.order:x)); setLastAlert(null); setUnread(u=>Math.max(0,u-1)); }
+              }catch{}
+            }}>Accept Order</button>
+          </div>
+        </div>
+      )}
       {msg && <div className="mt-2 text-[#f5c84a]">{msg}</div>}
       {!authed && (
         <div className="card mt-3">

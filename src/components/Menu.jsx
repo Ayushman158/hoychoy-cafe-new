@@ -148,7 +148,7 @@ const NonVegIcon = () => (
   function add(id){
   console.log('Adding item to cart:', id);
   console.log('Current cart:', cart);setCart(c=>({...c,[id]:(c[id]||0)+1}));setJustAdded(id);setTimeout(()=>setJustAdded(null),1000);} 
-  function handleProceed(){ onProceed(); }
+  function handleProceed(){ if(Object.values(cart).reduce((s,x)=>s+x,0)>0) onProceed(); }
   
 
   return (
@@ -301,8 +301,8 @@ const NonVegIcon = () => (
       <button
         type="button"
         onClick={handleProceed}
-        disabled={appReason==='CLOSED_BY_OWNER'}
-        className={`fixed right-3 z-30 rounded-full px-3 py-2 font-bold flex items-center gap-2 shadow-xl ${appReason==='CLOSED_BY_OWNER' ? 'opacity-60 cursor-not-allowed bg-[#333] text-[#999]' : 'bg-primary text-black'}`}
+        disabled={appReason==='CLOSED_BY_OWNER' || count===0}
+        className={`fixed right-3 z-30 rounded-full px-3 py-2 font-bold flex items-center gap-2 shadow-xl ${(appReason==='CLOSED_BY_OWNER' || count===0) ? 'opacity-60 cursor-not-allowed bg-[#333] text-[#999]' : 'bg-primary text-black'}`}
         style={{bottom: 'calc(160px + env(safe-area-inset-bottom, 0px))'}}
       >
         <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
@@ -315,7 +315,7 @@ const NonVegIcon = () => (
         <div className="row font-bold">
           <span>Total</span><span className="price">₹{cartTotal}</span>
         </div>
-        <button className={`btn w-full mt-2 ${appReason==='CLOSED_BY_OWNER' ? 'btn-disabled' : 'btn-primary'}`} disabled={appReason==='CLOSED_BY_OWNER'} onClick={handleProceed}>Proceed to Checkout</button>
+        <button className={`btn w-full mt-2 ${(appReason==='CLOSED_BY_OWNER' || cartTotal===0) ? 'btn-disabled' : 'btn-primary'}`} disabled={appReason==='CLOSED_BY_OWNER' || cartTotal===0} onClick={handleProceed}>Proceed to Checkout</button>
         {cartTotal>0 && (
           <button className="btn w-full mt-2" type="button" onClick={()=>{ setCart({}); try{ localStorage.removeItem('hc_cart'); }catch{} }}>Clear Cart</button>
         )}

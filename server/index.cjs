@@ -28,7 +28,11 @@ const ACCESS_CODE = process.env.PHONEPE_ACCESS_CODE || '';
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || 'https://www.hoychoycafe.com';
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'hoychoycafe@gmail.com';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'h0ych0ycafe123';
+const ADMIN_WHATSAPP_PHONE = process.env.ADMIN_WHATSAPP_PHONE || '';
+const WA_PHONE_NUMBER_ID = process.env.WA_PHONE_NUMBER_ID || '';
+const WA_ACCESS_TOKEN = process.env.WA_ACCESS_TOKEN || '';
 const MIN_ORDER_RUPEES = Number(process.env.MIN_ORDER_RUPEES||200);
+const ADMIN_REMEMBER_TTL_DAYS = Number(process.env.ADMIN_REMEMBER_TTL_DAYS||30);
 
 const DATA_DIR = process.env.DATA_DIR || '/var/data';
 const OV_PATH = path.join(DATA_DIR, 'overrides.json');
@@ -56,8 +60,10 @@ async function refreshOverridesFromStore(){ const v = await upGet('hc:overrides'
 function saveOverrides(obj){ overrides = obj; saveOverridesFS(obj); upSet('hc:overrides', obj); }
 const sessions = new Map();
 const ADMIN_TOKEN_TTL_HOURS = Number(process.env.ADMIN_TOKEN_TTL_HOURS||24);
-function createSession(ttlHours){ const t=crypto.randomBytes(24).toString('hex'); const hours = Number(ttlHours||ADMIN_TOKEN_TTL_HOURS)||ADMIN_TOKEN_TTL_HOURS; const exp=Date.now()+hours*60*60*1000; sessions.set(t,{exp, ttlHours:hours}); return t; }
-function isValidSession(t){ const s=sessions.get(t); if(!s) return false; if(Date.now()>s.exp){ sessions.delete(t); return false; } return true; }
+async function refreshSessionsFromStore(){ try{ const v = await upGet('hc:sessions'); if(v && typeof v==='object'){ const m=new Map(Object.entries(v)); sessions.clear(); m.forEach((val,key)=>sessions.set(key,val)); } }catch{} }
+function persistSessions(){ try{ const obj={}; sessions.forEach((val,key)=>{ obj[key]=val; }); upSet('hc:sessions', obj); }catch{} }
+function createSession(ttlHours){ const t=crypto.randomBytes(24).toString('hex'); const hours = Number(ttlHours||ADMIN_TOKEN_TTL_HOURS)||ADMIN_TOKEN_TTL_HOURS; const exp=Date.now()+hours*60*60*1000; sessions.set(t,{exp, ttlHours:hours}); persistSessions(); return t; }
+function isValidSession(t){ const s=sessions.get(t); if(!s) return false; if(Date.now()>s.exp){ sessions.delete(t); persistSessions(); return false; } return true; }
 
 let tokenCache = { token: '', expiresAt: 0 };
 let sdkClient = null;
@@ -174,10 +180,39 @@ function broadcast(payload){
   const msg = `data: ${JSON.stringify(payload)}\n\n`;
   orderClients.forEach((res)=>{ try{ res.write(msg); }catch{} });
 }
+async function sendWhatsApp(body){
+  try{
+    const id = WA_PHONE_NUMBER_ID;
+    const tok = WA_ACCESS_TOKEN;
+    const to = ADMIN_WHATSAPP_PHONE;
+    if(!id||!tok||!to) return {ok:false};
+    const url = `https://graph.facebook.com/v19.0/${id}/messages`;
+    const r = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${tok}`},body:JSON.stringify({messaging_product:'whatsapp',to,type:'text',text:{body}})});
+    const data = await r.json().catch(()=>null);
+    return {ok:r.ok, data};
+  }catch{ return {ok:false}; }
+}
+function formatOrderWhatsApp(o){
+  try{
+    const amt = Number(o.total||0);
+    const items = Array.isArray(o.items)?o.items:[];
+    const cnt = items.reduce((s,it)=> s + Number(it.qty||0), 0);
+    const link = `${PUBLIC_BASE_URL}/admin`;
+    const lines = [];
+    lines.push(`🟢 New Paid Order`);
+    lines.push(`ID: ${o.id}`);
+    lines.push(`Amount: ₹${amt}`);
+    lines.push(`Items: ${cnt}`);
+    lines.push(`Payment: PhonePe UPI`);
+    lines.push(link);
+    return lines.join('\n');
+  }catch{ return 'New paid order'; }
+}
 
 function isWithinHours(){ const h=new Date().getHours(); return h>=12 && h<21; }
 app.get('/api/app-status', async (req,res)=>{
   try{ await refreshOverridesFromStore(); }catch{}
+  try{ await refreshSessionsFromStore(); }catch{}
   const closed = overrides.appClosed===true || process.env.APP_CLOSED==='1';
   const open = !closed;
   const reason = closed ? 'CLOSED_BY_OWNER' : 'OPEN';
@@ -202,7 +237,7 @@ app.post('/api/admin/login', (req,res)=>{
   }
   if(email===ADMIN_EMAIL && password===ADMIN_PASSWORD){
     loginAttempts.delete(cid);
-    const token=createSession(remember ? 24*7 : ADMIN_TOKEN_TTL_HOURS);
+    const token=createSession(remember ? ADMIN_REMEMBER_TTL_DAYS*24 : ADMIN_TOKEN_TTL_HOURS);
     return res.json({ok:true, token});
   }
   rec.count = (rec.count||0)+1;
@@ -215,7 +250,7 @@ app.get('/api/admin/me', (req,res)=>{
   const hdr = req.headers['authorization']||'';
   const tok = hdr.startsWith('Bearer ') ? hdr.slice(7) : hdr;
   const ok = isValidSession(tok);
-  if(ok){ const s=sessions.get(tok); if(s){ const hours = s.ttlHours||ADMIN_TOKEN_TTL_HOURS; s.exp=Date.now()+hours*60*60*1000; } }
+  if(ok){ const s=sessions.get(tok); if(s){ const hours = s.ttlHours||ADMIN_TOKEN_TTL_HOURS; s.exp=Date.now()+hours*60*60*1000; persistSessions(); } }
   return res.json({authed:ok});
 });
 
@@ -522,6 +557,46 @@ app.post('/api/initiate-payment', async (req,res)=>{
     return res.status(500).json({error:'server-error', message:String(e)});
   }
 });
+app.post('/api/initiate-test-payment', async (req,res)=>{
+  try{
+    if(ENV!=='SANDBOX') return res.status(400).json({error:'not-allowed-in-prod'});
+    const { customerPhone, customerName, redirectOrigin } = req.body||{};
+    const orderId = `HC-TEST-${Date.now()}`;
+    const client = getSdkClient();
+    if(!client) return res.status(500).json({error:'sdk-not-configured'});
+    const paisa = 100; // ₹1
+    const metaInfo = MetaInfo.builder()
+      .udf1(String(customerPhone||''))
+      .udf2(String(customerName||'TEST'))
+      .build();
+    const origin = String(redirectOrigin||'http://localhost:5173').replace(/\/$/,'');
+    const rurl = `${origin}/?merchantTransactionId=${orderId}`;
+    const request = StandardCheckoutPayRequest.builder()
+      .merchantOrderId(String(orderId))
+      .amount(paisa)
+      .redirectUrl(String(rurl))
+      .metaInfo(metaInfo)
+      .build();
+    const response = await client.pay(request);
+    const url = response?.redirect_url || response?.redirectUrl || null;
+    if(!url) return res.status(500).json({error:'phonepe-init-failed', details:response});
+    payments.set(orderId, {status:'PENDING', amount:1});
+    startReconcile(orderId, 1800);
+    const preRecord = {
+      id: orderId,
+      txnId: null,
+      total: 1,
+      items: [],
+      customer: { name:String(customerName||'TEST'), phone:String(customerPhone||'') },
+      createdAt: Date.now(),
+      status: 'PENDING'
+    };
+    upsertOrder(preRecord);
+    return res.json({redirectUrl:url, orderId});
+  }catch(e){
+    return res.status(500).json({error:'server-error', message:String(e)});
+  }
+});
 
 app.post('/api/create-sdk-order', async (req,res)=>{
   try{
@@ -564,7 +639,13 @@ app.post('/api/payment-callback', (req,res)=>{
           payments.set(orderId, {status:st, transactionId:txn});
           const mapped = st==='COMPLETED' ? 'PAID' : (st==='FAILED' ? 'FAILED' : 'PENDING');
           const existing = findOrderById(orderId) || { id: orderId, createdAt: Date.now(), total: 0, items: [], customer: {}, status:'PENDING' };
-          const updated = { ...existing, status:mapped, txnId: txn||existing.txnId||null };
+          let updated = { ...existing, status:mapped, txnId: txn||existing.txnId||null };
+          const shouldNotify = mapped==='PAID' && !existing.notified;
+          if(shouldNotify){
+            const text = formatOrderWhatsApp(updated);
+            sendWhatsApp(text).catch(()=>{});
+            updated = { ...updated, notified:true };
+          }
           upsertOrder(updated);
         }
         return res.json({ok:true, state:st});
@@ -573,7 +654,13 @@ app.post('/api/payment-callback', (req,res)=>{
           payments.set(merchantTransactionId, {status:state, transactionId});
           const mapped = state==='COMPLETED' ? 'PAID' : (state==='FAILED' ? 'FAILED' : 'PENDING');
           const existing = findOrderById(merchantTransactionId) || { id: merchantTransactionId, createdAt: Date.now(), total: 0, items: [], customer: {}, status:'PENDING' };
-          const updated = { ...existing, status:mapped, txnId: transactionId||existing.txnId||null };
+          let updated = { ...existing, status:mapped, txnId: transactionId||existing.txnId||null };
+          const shouldNotify = mapped==='PAID' && !existing.notified;
+          if(shouldNotify){
+            const text = formatOrderWhatsApp(updated);
+            sendWhatsApp(text).catch(()=>{});
+            updated = { ...updated, notified:true };
+          }
           upsertOrder(updated);
         }
         return res.json({ok:true, state});
@@ -583,7 +670,13 @@ app.post('/api/payment-callback', (req,res)=>{
         payments.set(merchantTransactionId, {status:state, transactionId});
         const mapped = state==='COMPLETED' ? 'PAID' : (state==='FAILED' ? 'FAILED' : 'PENDING');
         const existing = findOrderById(merchantTransactionId) || { id: merchantTransactionId, createdAt: Date.now(), total: 0, items: [], customer: {}, status:'PENDING' };
-        const updated = { ...existing, status:mapped, txnId: transactionId||existing.txnId||null };
+        let updated = { ...existing, status:mapped, txnId: transactionId||existing.txnId||null };
+        const shouldNotify = mapped==='PAID' && !existing.notified;
+        if(shouldNotify){
+          const text = formatOrderWhatsApp(updated);
+          sendWhatsApp(text).catch(()=>{});
+          updated = { ...updated, notified:true };
+        }
         upsertOrder(updated);
       }
       return res.json({ok:true, state});
@@ -611,7 +704,13 @@ app.post('/api/phonepe/webhook', (req,res)=>{
           const mapped = st==='COMPLETED' ? 'PAID' : (st==='FAILED' ? 'FAILED' : 'PENDING');
           payments.set(orderId, {status:mapped, transactionId:txn});
           const existing = findOrderById(orderId) || { id: orderId, createdAt: Date.now(), total: 0, items: [], customer: {}, status:'PENDING' };
-          const updated = { ...existing, status:mapped, txnId: txn||existing.txnId||null };
+          let updated = { ...existing, status:mapped, txnId: txn||existing.txnId||null };
+          const shouldNotify = mapped==='PAID' && !existing.notified;
+          if(shouldNotify){
+            const text = formatOrderWhatsApp(updated);
+            sendWhatsApp(text).catch(()=>{});
+            updated = { ...updated, notified:true };
+          }
           upsertOrder(updated);
         }
         if(event && event.startsWith('pg.order')){
@@ -717,6 +816,20 @@ app.post('/api/admin/order-delivered', requireAdmin, (req,res)=>{
     const idx = orders.findIndex(o=>String(o.id)===String(id));
     if(idx<0) return res.status(404).json({error:'order-not-found'});
     orders[idx] = { ...orders[idx], status:'DELIVERED', deliveredAt: Date.now() };
+    const payload = `data: ${JSON.stringify({type:'order.updated', order:orders[idx]})}\n\n`;
+    orderClients.forEach((res)=>{ try{ res.write(payload); }catch{} });
+    return res.json({ok:true, order:orders[idx]});
+  }catch(e){
+    return res.status(500).json({error:'server-error'});
+  }
+});
+app.post('/api/admin/order-accept', requireAdmin, (req,res)=>{
+  try{
+    const { id } = req.body||{};
+    if(!id) return res.status(400).json({error:'id required'});
+    const idx = orders.findIndex(o=>String(o.id)===String(id));
+    if(idx<0) return res.status(404).json({error:'order-not-found'});
+    orders[idx] = { ...orders[idx], status:'ACCEPTED', acceptedAt: Date.now() };
     const payload = `data: ${JSON.stringify({type:'order.updated', order:orders[idx]})}\n\n`;
     orderClients.forEach((res)=>{ try{ res.write(payload); }catch{} });
     return res.json({ok:true, order:orders[idx]});

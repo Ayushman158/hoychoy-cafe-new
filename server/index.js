@@ -71,6 +71,31 @@ app.post('/api/initiate-payment', async (req,res)=>{
   }
 });
 
+app.post('/api/initiate-test-payment', async (req,res)=>{
+  try{
+    const { customerPhone, customerName, redirectOrigin } = req.body||{};
+    const orderId = `HC-TEST-${Date.now()}`;
+    const origin = String(redirectOrigin||'http://localhost:5173').replace(/\/$/,'');
+    const rurl = `${origin}/?merchantTransactionId=${orderId}`;
+    const payload = {
+      merchantId: MERCHANT_ID,
+      merchantTransactionId: orderId,
+      amount: 100,
+      merchantUserId: customerPhone || customerName || 'user',
+      mobileNumber: customerPhone,
+      redirectUrl: rurl,
+      paymentInstrument: { type: 'PAY_PAGE' }
+    };
+    const resp = await phonepePay(payload);
+    if(!resp.ok) return res.status(500).json({error:'phonepe-init-failed', details:resp.data});
+    const url = resp.data?.data?.instrumentResponse?.redirectInfo?.url;
+    payments.set(orderId, {status:'PENDING', amount:1});
+    return res.json({redirectUrl:url, orderId});
+  }catch(e){
+    return res.status(500).json({error:'server-error', message:String(e)});
+  }
+});
+
 app.post('/api/payment-callback', (req,res)=>{
   try{
     const { merchantTransactionId, transactionId, state } = req.body || {};
@@ -102,4 +127,3 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, ()=>{
   console.log(`PhonePe server listening on http://localhost:${PORT}`);
 });
-

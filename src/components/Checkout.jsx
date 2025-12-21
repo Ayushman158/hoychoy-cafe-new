@@ -99,6 +99,7 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
   }
 
   function calculateDeliveryFee(){
+    if(total===0) return 0;
     if(distance==null) return 50;
     return distance>5 ? 80 : 50;
   }
@@ -250,7 +251,7 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
             <div className="row"><span>Subtotal</span><span className="price">₹{total}</span></div>
             {discountPct>0 && <div className="row"><span>Coupon ({discountPct}% off)</span><span className="price">-₹{Math.max(0, total - discountedSubtotal)}</span></div>}
             <div className="row"><span>GST (5%)</span><span className="price">₹{gst}</span></div>
-            <div className="row"><span>Delivery Fee</span><span className="price">₹{deliveryFee}</span></div>
+            {total>0 && canOrder && <div className="row"><span>Delivery Fee</span><span className="price">₹{deliveryFee}</span></div>}
           </div>
         )}
       </div>
