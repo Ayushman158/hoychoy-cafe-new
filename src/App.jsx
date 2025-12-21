@@ -11,6 +11,7 @@ import Terms from "./components/Terms.jsx";
 import RefundCancellation from "./components/RefundCancellation.jsx";
 import Shipping from "./components/Shipping.jsx";
 import About from "./components/About.jsx";
+import Install from "./components/Install.jsx";
 import Footer from "./components/Footer.jsx";
 import Reservation from "./components/Reservation.jsx";
 import { OWNER_PHONE, MERCHANT_NAME } from "./config.js";
@@ -54,7 +55,7 @@ export default function App(){
       setView('payment');
     }
     const p = window.location.pathname.replace(/^\/+/,"");
-    if(['privacy','terms','refund','shipping','about','reserve','admin'].includes(p)){
+    if(['privacy','terms','refund','shipping','about','reserve','admin','install'].includes(p)){
       setPolicy(p);
       setView('policy');
     }
@@ -144,6 +145,10 @@ export default function App(){
     </>);
     if(policy==='admin') return (<>
       <Admin />
+      <Footer />
+    </>);
+    if(policy==='install') return (<>
+      <Install />
       <Footer />
     </>);
     return (<>
