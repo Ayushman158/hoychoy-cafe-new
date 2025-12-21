@@ -29,6 +29,7 @@ export default function Admin(){
   const [showBell,setShowBell]=useState(false);
   const [kitchen,setKitchen]=useState(false);
   const [lastAlert,setLastAlert]=useState(null);
+  const [menuOpen,setMenuOpen]=useState(false);
   const [selected,setSelected]=useState(null);
   const [ownerClosed,setOwnerClosed]=useState(false);
   const [closingMessage,setClosingMessage]=useState("");
@@ -268,13 +269,26 @@ export default function Admin(){
         <div className="font-bold text-lg">Admin Panel</div>
         <div className="flex items-center gap-2">
           {authed && (
-            <button className="relative btn" type="button" onClick={()=>setShowBell(s=>!s)} aria-label="Notifications">🔔{unread>0 && <span className="absolute -top-1 -right-1 bg-[#f5c84a] text-black text-xs rounded-full px-1">{unread}</span>}</button>
+            <button className="btn" type="button" onClick={()=>setMenuOpen(true)} aria-label="Menu">☰</button>
           )}
-          {authed && <button className="btn" type="button" onClick={()=>{ try{ Notification && Notification.requestPermission && Notification.requestPermission(); }catch{} }}>Enable Notifications</button>}
-          {authed && <button className="btn" onClick={()=>setKitchen(k=>!k)}>{kitchen?'Exit Kitchen':'Kitchen Mode'}</button>}
-          {authed && <button className="btn" onClick={logout}>Logout</button>}
         </div>
       </div>
+      {menuOpen && authed && (
+        <div className="fixed inset-0 z-[80]" role="dialog" aria-modal="true">
+          <div className="absolute inset-0 bg-black/60" onClick={()=>setMenuOpen(false)}></div>
+          <div className="absolute right-0 top-0 h-full w-[82%] max-w-[360px] bg-[#0f0f0f] border-l border-[#222] shadow-xl p-3 flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <div className="font-bold">Admin Menu</div>
+              <button className="btn" type="button" onClick={()=>setMenuOpen(false)}>✕</button>
+            </div>
+            <button className="relative btn" type="button" onClick={()=>{ setShowBell(s=>!s); }} aria-label="Notifications">🔔{unread>0 && <span className="absolute -top-1 -right-1 bg-[#f5c84a] text-black text-xs rounded-full px-1">{unread}</span>}</button>
+            <button className="btn" type="button" onClick={()=>{ try{ if(window.__bip){ window.__bip.prompt(); } else { const ua=navigator.userAgent||''; const isIOS=/iPhone|iPad|iPod/.test(ua); const isSafari=/Safari/.test(ua)&&!/Chrome/.test(ua); if(isIOS && isSafari){ alert('On iPhone/iPad: Tap Share → Add to Home Screen to install.'); } else { alert('Use browser menu: Install App / Add to Home Screen.'); } } }catch{} }}>Install App</button>
+            <button className="btn" type="button" onClick={()=>{ try{ Notification && Notification.requestPermission && Notification.requestPermission(); }catch{} }}>Enable Notifications</button>
+            <button className="btn" type="button" onClick={()=>setKitchen(k=>!k)}>{kitchen?'Exit Kitchen':'Kitchen Mode'}</button>
+            <button className="btn" type="button" onClick={logout}>Logout</button>
+          </div>
+        </div>
+      )}
       {showBell && (
         <div className="fixed right-4 top-14 z-[60] w-72 bg-[#0f0f0f] border border-[#222] rounded-xl p-2 shadow-lg">
           <div className="flex items-center justify-between">
