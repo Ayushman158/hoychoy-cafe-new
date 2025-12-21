@@ -15,9 +15,3 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-window.addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault();
-  window.__bip = e;
-});
-
-window.addEventListener('appinstalled', ()=>{ window.__bip = null; });

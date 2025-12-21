@@ -49,8 +49,6 @@ export default function Menu({cart, setCart, onProceed}){
   const [closingMsg,setClosingMsg]=useState("");
   const headerRef = React.useRef(null);
   const [headerH,setHeaderH] = useState(0);
-  const [showIosHint, setShowIosHint] = useState(false);
-  const [showAndroidHint, setShowAndroidHint] = useState(false);
   useLayoutEffect(()=>{
     const update=()=>{ if(headerRef.current){ setHeaderH(headerRef.current.offsetHeight||0); } };
     update();
@@ -58,47 +56,6 @@ export default function Menu({cart, setCart, onProceed}){
     return ()=> window.removeEventListener('resize', update);
   },[statusLoading,filters,cat,query,appOpen,appReason]);
 
-  useEffect(()=>{
-    try{
-      const ua = navigator.userAgent || "";
-      const isiOS = /iPhone|iPad|iPod/.test(ua);
-      const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
-      const installed = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || (navigator && navigator.standalone);
-      const dismissed = (typeof localStorage!=='undefined') && localStorage.getItem('hc_ios_install_hint') === '1';
-      if(isiOS && isSafari && !installed && !dismissed){ setShowIosHint(true); }
-    }catch{}
-  },[]);
-
-  useEffect(()=>{
-    try{
-      const installed = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || (navigator && navigator.standalone);
-      const dismissed = (typeof localStorage!=='undefined') && localStorage.getItem('hc_android_install_hint') === '1';
-      const check=()=>{ if(window.__bip && !installed && !dismissed){ setShowAndroidHint(true); } };
-      check();
-      const handler=(e)=>{ window.__bip=e; check(); };
-      window.addEventListener('beforeinstallprompt', handler);
-      const installedHandler=()=>{ setShowAndroidHint(false); try{ localStorage.setItem('hc_android_install_hint','1'); }catch{} };
-      window.addEventListener('appinstalled', installedHandler);
-      return ()=>{ window.removeEventListener('beforeinstallprompt', handler); window.removeEventListener('appinstalled', installedHandler); };
-    }catch{}
-  },[]);
-
-  function dismissIosHint(){
-    setShowIosHint(false);
-    try{ localStorage.setItem('hc_ios_install_hint','1'); }catch{}
-  }
-  function dismissAndroidHint(){
-    setShowAndroidHint(false);
-    try{ localStorage.setItem('hc_android_install_hint','1'); }catch{}
-  }
-  function promptAndroidInstall(){
-    try{
-      const bip = window.__bip;
-      if(bip){ bip.prompt(); }
-      setShowAndroidHint(false);
-      localStorage.setItem('hc_android_install_hint','1');
-    }catch{}
-  }
   const VegIcon = () => (
   <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" strokeWidth="2">
     <rect
@@ -153,14 +110,14 @@ const NonVegIcon = () => (
     return list;
   },[filters]);
   const items=useMemo(()=>{
-    const q=query.trim().toLowerCase();
+    const q=query.trim();
     return (base.items||[]).filter(i=>{
-      if (BEST_SELLER_IDS.includes(i.id)) return false;
+      if (!q && BEST_SELLER_IDS.includes(i.id)) return false;
       const okF= !filters.length || ((filters.includes('veg')&&i.veg) || (filters.includes('nonveg')&&!i.veg));
       const okC= !cat || i.category===cat || (
         cat==="Appetizers" && (i.category==="Appetizers (Veg)"||i.category==="Appetizers (Non-Veg)")
       );
-      const okQ=!q||i.name.toLowerCase().includes(q);
+      const okQ = matchesQuery(i, q);
       return okF&&okC&&okQ;
     });
   },[filters,cat,query]);
@@ -220,19 +177,7 @@ const NonVegIcon = () => (
                     <a href="/" className="block px-2 py-2 rounded hover:bg-[#1a1a1a]">Main Menu</a>
                     <a href="/about" className="block px-2 py-2 rounded hover:bg-[#1a1a1a]">About</a>
                     <a href="/reserve" className="block px-2 py-2 rounded hover:bg-[#1a1a1a]">Reservations</a>
-                    <button
-                      className="text-left block px-2 py-2 rounded hover:bg-[#1a1a1a]"
-                      onClick={()=>{
-                        const bip = window.__bip;
-                        if(bip){ bip.prompt(); } else {
-                          const ua = navigator.userAgent || "";
-                          const isiOS = /iPhone|iPad|iPod/.test(ua);
-                          const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
-                          if(isiOS && isSafari){ alert("Tap Share, then 'Add to Home Screen' to install."); } else { alert("Use browser menu: Install app or Add to Home Screen."); }
-                        }
-                        setMenuOpen(false);
-                      }}
-                    >Install App</button>
+                    
                   </div>
                 </>
               )}
@@ -246,30 +191,7 @@ const NonVegIcon = () => (
               <span>{closingMsg || DEFAULT_CLOSING_MSG}</span>
             </div>
           )}
-        {showIosHint && (
-          <div className="mt-2 bg-[#1a1a1a] border border-[#222] rounded-xl p-2 text-xs text-[#cfcfcf]">
-            <div className="flex items-center justify-between">
-              <span className="font-semibold text-white">Install on iPhone</span>
-              <button onClick={dismissIosHint} className="px-2 py-1 rounded-lg border border-[#222]">✕</button>
-            </div>
-            <div className="mt-2 flex items-center gap-3">
-              <span className="inline-flex items-center gap-1 text-[#e5e5e5]"><svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v8"/><path d="M9 8l3-3 3 3"/><path d="M4 13v6h16v-6"/></svg> Share</span>
-              <span className="inline-flex items-center gap-1 text-[#e5e5e5]"><svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M12 8v8"/><path d="M8 12h8"/></svg> Add to Home Screen</span>
-            </div>
-          </div>
-        )}
-        {showAndroidHint && (
-          <div className="mt-2 bg-[#1a1a1a] border border-[#222] rounded-xl p-2 text-xs text-[#cfcfcf]">
-            <div className="flex items-center justify-between">
-              <span className="font-semibold text-white">Install the app</span>
-              <button onClick={dismissAndroidHint} className="px-2 py-1 rounded-lg border border-[#222]">✕</button>
-            </div>
-            <div className="mt-2 flex items-center gap-3">
-              <button className="btn btn-primary" onClick={promptAndroidInstall}>Install</button>
-              <span className="text-[#e5e5e5]">Quick access from your home screen</span>
-            </div>
-          </div>
-        )}
+
           <div className="mt-3">
             <input
               className="w-full bg-[#111] border border-[#222] rounded-xl p-2"
@@ -304,6 +226,7 @@ const NonVegIcon = () => (
             ))}
           </div>
         </div>
+        {!query.trim() && (
         <div className="mt-4">
           <div className="text-xl font-bold">Best Sellers</div>
           <div className="mt-2 overflow-x-auto flex gap-3 snap-x snap-mandatory pb-2">
@@ -334,6 +257,7 @@ const NonVegIcon = () => (
             ))}
           </div>
         </div>
+        )}
 
       <ul className="flex flex-col gap-2">
         {items.map(item=> (
@@ -387,3 +311,17 @@ const NonVegIcon = () => (
     </main>
   );
 }
+  function norm(s){
+    try{ return String(s||'').toLowerCase(); }catch{ return ''; }
+  }
+  function tokens(s){
+    const t = norm(s).split(/[^a-z0-9]+/).filter(Boolean);
+    return t.map(x=> x.endsWith('s') ? x.slice(0,-1) : x);
+  }
+  function matchesQuery(i, q){
+    if(!q) return true;
+    const qt = tokens(q);
+    const nameT = tokens(i.name);
+    const catT = tokens(i.category);
+    return qt.every(w=> nameT.includes(w) || catT.includes(w));
+  }
