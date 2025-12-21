@@ -78,19 +78,23 @@ export default function Admin(){
 
   useEffect(()=>{
     if(!authed || !token) return;
-    try{
-      const es = new EventSource(`${BACKEND_URL}/api/admin/orders/stream?token=${encodeURIComponent(token)}`);
-      es.onmessage = (ev)=>{
-        try{
-          const d = JSON.parse(ev.data||'{}');
-          if(d.type==='init' && Array.isArray(d.orders)) setOrders(d.orders);
-          if(d.type==='order.created' && d.order) setOrders((prev)=>[d.order, ...prev]);
-          if(d.type==='order.updated' && d.order) setOrders((prev)=>prev.map(x=>x.id===d.order.id?d.order:x));
-        }catch{}
-      };
-      es.onerror = ()=>{ es.close(); setAuthed(false); setMsg('Connection lost. Please log in again'); };
-      return ()=>{ es.close(); };
-    }catch{}
+    let es=null; let t=null;
+    function open(){
+      try{
+        es = new EventSource(`${BACKEND_URL}/api/admin/orders/stream?token=${encodeURIComponent(token)}`);
+        es.onmessage = (ev)=>{
+          try{
+            const d = JSON.parse(ev.data||'{}');
+            if(d.type==='init' && Array.isArray(d.orders)) setOrders(d.orders);
+            if(d.type==='order.created' && d.order) setOrders((prev)=>[d.order, ...prev]);
+            if(d.type==='order.updated' && d.order) setOrders((prev)=>prev.map(x=>x.id===d.order.id?d.order:x));
+          }catch{}
+        };
+        es.onerror = ()=>{ try{ es.close(); }catch{}; setMsg('Connection lost. Reconnecting…'); t=setTimeout(open,2000); };
+      }catch{ t=setTimeout(open,2000); }
+    }
+    open();
+    return ()=>{ try{ es && es.close(); }catch{}; try{ clearTimeout(t); }catch{} };
   },[authed, token]);
   function logout(){ localStorage.removeItem('hc_admin_token'); setToken(''); setAuthed(false); setMsg('Logged out'); }
 
