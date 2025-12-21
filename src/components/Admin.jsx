@@ -45,6 +45,38 @@ export default function Admin(){
   const [newCode,setNewCode]=useState('');
   const [newPercent,setNewPercent]=useState('');
   const [newEnabled,setNewEnabled]=useState(true);
+  const [notifiedIds,setNotifiedIds]=useState(()=>{ try{ const s=localStorage.getItem('hc_notified_orders'); return s?JSON.parse(s):[]; }catch{ return []; }});
+  useEffect(()=>{ try{ localStorage.setItem('hc_notified_orders', JSON.stringify((notifiedIds||[]).slice(-200))); }catch{} },[notifiedIds]);
+  useEffect(()=>{ try{ const s=localStorage.getItem('hc_admin_notifs'); const u=localStorage.getItem('hc_admin_unread'); if(s){ setNotifs(JSON.parse(s)); } if(u){ setUnread(Number(u)||0); } }catch{} },[]);
+  useEffect(()=>{ try{ localStorage.setItem('hc_admin_notifs', JSON.stringify((notifs||[]).slice(0,50))); localStorage.setItem('hc_admin_unread', String(unread||0)); }catch{} },[notifs,unread]);
+  function updateAppBadge(count){ try{ if(navigator.setAppBadge){ navigator.setAppBadge(Math.max(0,Number(count||0))); } }catch{} }
+  function clearAppBadge(){ try{ if(navigator.clearAppBadge){ navigator.clearAppBadge(); } }catch{} }
+  async function showSwNotification(title, body){
+    try{
+      const reg = await navigator.serviceWorker.getRegistration();
+      if(reg && Notification && Notification.permission==='granted'){
+        reg.showNotification(title, { body, icon:'/icons/icon-192-maskable.png', badge:'/icons/icon-96.png' });
+      }
+    }catch{}
+  }
+  function playAlertTone(){
+    try{
+      const Ctx = window.AudioContext||window.webkitAudioContext; if(!Ctx) return;
+      const ctx = new Ctx();
+      const o = ctx.createOscillator(); const g = ctx.createGain();
+      o.type='sine'; o.frequency.value=880; o.connect(g); g.connect(ctx.destination);
+      g.gain.setValueAtTime(0.001, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime+0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime+0.25);
+      o.start(); o.stop(ctx.currentTime+0.26);
+      const o2 = ctx.createOscillator(); const g2 = ctx.createGain();
+      o2.type='sine'; o2.frequency.value=660; o2.connect(g2); g2.connect(ctx.destination);
+      g2.gain.setValueAtTime(0.001, ctx.currentTime+0.3);
+      g2.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime+0.32);
+      g2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime+0.57);
+      o2.start(ctx.currentTime+0.3); o2.stop(ctx.currentTime+0.58);
+    }catch{}
+  }
   const filteredOrders = useMemo(()=>{
     if(orderFilter==='DELIVERED') return (orders||[]).filter(o=>o.status==='DELIVERED');
     if(orderFilter==='NEW') return (orders||[]).filter(o=>o.status!=='DELIVERED');
@@ -97,10 +129,15 @@ export default function Admin(){
               setOrders((prev)=>prev.map(x=>x.id===d.order.id?d.order:x));
               if(d.order.status==='PAID'){
                 const info = {id:d.order.id, total:Number(d.order.total||0), ts:Date.now()};
-                setNotifs(prev=>[{title:'New paid order', body:`#${info.id} • ₹${info.total}`, ts:info.ts}, ...prev].slice(0,20));
-                setUnread(u=>u+1);
-                try{ if(Notification && Notification.permission==='granted'){ new Notification('New paid order', { body:`#${info.id} • ₹${info.total}` }); } }catch{}
-                if(kitchen){ setLastAlert(d.order); try{ const a=new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABYAAAAgAAAAAAA=' ); a.play().catch(()=>{});}catch{} }
+                const already = (notifiedIds||[]).includes(info.id);
+                if(!already){
+                  setNotifiedIds(prev=>[...prev, info.id]);
+                  setNotifs(prev=>[{title:'New paid order', body:`#${info.id} • ₹${info.total}`, ts:info.ts}, ...prev].slice(0,20));
+                  setUnread(u=>{ const nu=(u+1); updateAppBadge(nu); return nu; });
+                  showSwNotification('New paid order', `#${info.id} • ₹${info.total}`);
+                  playAlertTone();
+                  if(kitchen){ setLastAlert(d.order); }
+                }
               }
             }
           }catch{}
@@ -293,7 +330,7 @@ export default function Admin(){
         <div className="fixed right-4 top-14 z-[60] w-72 bg-[#0f0f0f] border border-[#222] rounded-xl p-2 shadow-lg">
           <div className="flex items-center justify-between">
             <div className="font-bold">Notifications</div>
-            <button className="text-xs underline" type="button" onClick={()=>{setUnread(0); setShowBell(false);}}>Mark all read</button>
+            <button className="text-xs underline" type="button" onClick={()=>{setUnread(0); clearAppBadge(); setShowBell(false);}}>Mark all read</button>
           </div>
           <ul className="max-h-64 overflow-auto mt-2">
             {notifs.map((n,i)=>(

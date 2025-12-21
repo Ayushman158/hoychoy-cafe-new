@@ -258,10 +258,10 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
 
       <div className="card mt-3">
         <div className="section-title">Apply Coupon</div>
-        <div className="flex gap-2">
-          <input className="flex-1 bg-[#111] border border-[#222] rounded-xl p-2" placeholder="Enter coupon code" value={couponCode} onChange={e=>setCouponCode(e.target.value)} />
-          <button className="btn" type="button" onClick={applyCoupon}>Apply</button>
-          {coupon && <button className="btn" type="button" onClick={()=>{ setCoupon(null); setCouponCode(''); }}>Remove</button>}
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input className="w-full sm:flex-1 min-w-0 bg-[#111] border border-[#222] rounded-xl p-2" placeholder="Enter coupon code" value={couponCode} onChange={e=>setCouponCode(e.target.value)} />
+          <button className="btn w-full sm:w-auto" type="button" onClick={applyCoupon}>Apply</button>
+          {coupon && <button className="btn w-full sm:w-auto" type="button" onClick={()=>{ setCoupon(null); setCouponCode(''); }}>Remove</button>}
         </div>
         {coupon && <div className="text-success text-xs mt-2">Applied {coupon.code} • {discountPct}% off</div>}
       </div>

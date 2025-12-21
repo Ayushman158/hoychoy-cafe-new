@@ -21,7 +21,18 @@
     <link rel="apple-touch-icon" sizes="167x167" href="/icons/icon-167.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180.png" />
     <link rel="apple-touch-icon-precomposed" sizes="180x180" href="/icons/icon-180.png" />
-    <link rel="manifest" href="/manifest.webmanifest" />
+    <script>
+      (function(){
+        try{
+          var path = window.location.pathname || '/';
+          var isAdmin = /^\/admin(\/|$)/.test(path);
+          var link = document.createElement('link');
+          link.setAttribute('rel','manifest');
+          link.setAttribute('href', isAdmin ? '/manifest-admin.webmanifest' : '/manifest.webmanifest');
+          document.head.appendChild(link);
+        }catch(e){}
+      })();
+    </script>
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
