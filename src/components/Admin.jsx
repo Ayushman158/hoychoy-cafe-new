@@ -27,8 +27,6 @@ export default function Admin(){
   const [notifs,setNotifs]=useState([]);
   const [unread,setUnread]=useState(0);
   const [showBell,setShowBell]=useState(false);
-  const [kitchen,setKitchen]=useState(false);
-  const [lastAlert,setLastAlert]=useState(null);
   const [menuOpen,setMenuOpen]=useState(false);
   const [selected,setSelected]=useState(null);
   const [ownerClosed,setOwnerClosed]=useState(false);
@@ -134,11 +132,10 @@ export default function Admin(){
                   setNotifiedIds(prev=>[...prev, info.id]);
                   setNotifs(prev=>[{title:'New paid order', body:`#${info.id} • ₹${info.total}`, ts:info.ts}, ...prev].slice(0,20));
                   setUnread(u=>{ const nu=(u+1); updateAppBadge(nu); return nu; });
-                  showSwNotification('New paid order', `#${info.id} • ₹${info.total}`);
-                  playAlertTone();
-                  if(kitchen){ setLastAlert(d.order); }
-                }
+                showSwNotification('New paid order', `#${info.id} • ₹${info.total}`);
+                playAlertTone();
               }
+            }
             }
           }catch{}
         };
@@ -306,7 +303,10 @@ export default function Admin(){
         <div className="font-bold text-lg">Admin Panel</div>
         <div className="flex items-center gap-2">
           {authed && (
-            <button className="btn" type="button" onClick={()=>setMenuOpen(true)} aria-label="Menu">☰</button>
+            <>
+              <button className="relative btn" type="button" onClick={()=>{ setShowBell(s=>!s); }} aria-label="Notifications">🔔{unread>0 && <span className="absolute -top-1 -right-1 bg-[#f5c84a] text-black text-xs rounded-full px-1">{unread}</span>}</button>
+              <button className="btn" type="button" onClick={()=>setMenuOpen(true)} aria-label="Menu">☰</button>
+            </>
           )}
         </div>
       </div>
@@ -318,10 +318,8 @@ export default function Admin(){
               <div className="font-bold">Admin Menu</div>
               <button className="btn" type="button" onClick={()=>setMenuOpen(false)}>✕</button>
             </div>
-            <button className="relative btn" type="button" onClick={()=>{ setShowBell(s=>!s); }} aria-label="Notifications">🔔{unread>0 && <span className="absolute -top-1 -right-1 bg-[#f5c84a] text-black text-xs rounded-full px-1">{unread}</span>}</button>
             <button className="btn" type="button" onClick={()=>{ try{ if(window.__bip){ window.__bip.prompt(); } else { const ua=navigator.userAgent||''; const isIOS=/iPhone|iPad|iPod/.test(ua); const isSafari=/Safari/.test(ua)&&!/Chrome/.test(ua); if(isIOS && isSafari){ alert('On iPhone/iPad: Tap Share → Add to Home Screen to install.'); } else { alert('Use browser menu: Install App / Add to Home Screen.'); } } }catch{} }}>Install App</button>
             <button className="btn" type="button" onClick={()=>{ try{ Notification && Notification.requestPermission && Notification.requestPermission(); }catch{} }}>Enable Notifications</button>
-            <button className="btn" type="button" onClick={()=>setKitchen(k=>!k)}>{kitchen?'Exit Kitchen':'Kitchen Mode'}</button>
             <button className="btn" type="button" onClick={logout}>Logout</button>
           </div>
         </div>
@@ -337,21 +335,6 @@ export default function Admin(){
               <li key={i} className="row"><span>{n.title}</span><span className="text-sm">{n.body}</span></li>
             ))}
           </ul>
-        </div>
-      )}
-      {kitchen && lastAlert && (
-        <div className="fixed inset-0 bg-black/90 z-[70] flex flex-col items-center justify-center">
-          <div className="text-2xl font-extrabold">New Paid Order</div>
-          <div className="mt-2">#{lastAlert.id} • ₹{Number(lastAlert.total||0)}</div>
-          <div className="mt-3">
-            <button className="btn btn-primary" type="button" onClick={async()=>{
-              try{
-                const r=await authedFetch(`${BACKEND_URL}/api/admin/order-accept`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:lastAlert.id})});
-                const d=await r.json();
-                if(r.ok && d && d.ok){ setOrders(prev=>prev.map(x=>x.id===d.order.id?d.order:x)); setLastAlert(null); setUnread(u=>Math.max(0,u-1)); }
-              }catch{}
-            }}>Accept Order</button>
-          </div>
         </div>
       )}
       {msg && <div className="mt-2 text-[#f5c84a]">{msg}</div>}
