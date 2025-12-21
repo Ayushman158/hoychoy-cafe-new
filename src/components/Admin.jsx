@@ -35,6 +35,10 @@ export default function Admin(){
   const [orderFilter,setOrderFilter]=useState('ALL');
   const [waTemplate,setWaTemplate]=useState('Your order has been placed. We will deliver within 15 minutes.');
   const [waCustom,setWaCustom]=useState('');
+  const [coupons,setCoupons]=useState({});
+  const [newCode,setNewCode]=useState('');
+  const [newPercent,setNewPercent]=useState('');
+  const [newEnabled,setNewEnabled]=useState(true);
   const filteredOrders = useMemo(()=>{
     if(orderFilter==='DELIVERED') return (orders||[]).filter(o=>o.status==='DELIVERED');
     if(orderFilter==='NEW') return (orders||[]).filter(o=>o.status!=='DELIVERED');
@@ -63,6 +67,7 @@ export default function Admin(){
 
   useEffect(()=>{ refreshStatus(); },[]);
   useEffect(()=>{ refreshOverrides(); },[]);
+  useEffect(()=>{ refreshCoupons(); },[]);
   useEffect(()=>{
     async function check(){
       if(!token) return;
@@ -114,6 +119,9 @@ export default function Admin(){
   }
   async function refreshOverrides(){
     try{ const r=await fetch(`${BACKEND_URL}/api/menu-overrides`); const d=await r.json(); if(r.ok){ setOwnerClosed(!!d.appClosed); setClosingMessage(String(d.closingMessage||"")); } }catch{}
+  }
+  async function refreshCoupons(){
+    try{ if(!token) return; const r=await authedFetch(`${BACKEND_URL}/api/admin/coupons`,{method:'GET'}); const d=await r.json(); if(r.ok && d.ok){ setCoupons(d.coupons||{}); } }catch{}
   }
   async function setOpen(open){
     setMsg(""); setToggling(true);
@@ -326,6 +334,50 @@ export default function Admin(){
                 }catch{ setMsg('Network error'); }
               }}>Save Message</button>
             </div>
+          </div>
+        </div>
+      </div>
+      )}
+      {authed && (
+      <div className="card mt-3">
+        <div className="section-title">Coupon Management</div>
+        <div className="grid grid-cols-1 gap-2">
+          <div className="row">
+            <span>Existing Coupons</span>
+            <span className="text-sm">{Object.keys(coupons||{}).length||0}</span>
+          </div>
+          <ul className="flex flex-col gap-2 max-h-[200px] overflow-auto">
+            {Object.entries(coupons||{}).map(([code,info])=> (
+              <li key={code} className="row">
+                <span>{code}</span>
+                <span className="flex items-center gap-2 text-sm">
+                  <span>{info.percent}%</span>
+                  <span className={`inline-block w-2 h-2 rounded-full ${info.enabled?'bg-success':'bg-error'}`}></span>
+                </span>
+              </li>
+            ))}
+          </ul>
+          <div className="border-t border-[#222] my-2"/>
+          <div className="grid grid-cols-3 gap-2">
+            <input className="bg-[#111] border border-[#222] rounded-xl p-2" placeholder="Code" value={newCode} onChange={e=>setNewCode(e.target.value)} />
+            <input className="bg-[#111] border border-[#222] rounded-xl p-2" placeholder="Percent" value={newPercent} onChange={e=>setNewPercent(e.target.value)} />
+            <select className="bg-[#111] border border-[#222] rounded-xl p-2" value={newEnabled?'enabled':'disabled'} onChange={e=>setNewEnabled(e.target.value==='enabled')}>
+              <option value="enabled">Enabled</option>
+              <option value="disabled">Disabled</option>
+            </select>
+          </div>
+          <div className="flex gap-2">
+            <button className="btn btn-primary" type="button" onClick={async()=>{
+              setMsg('');
+              try{
+                const r=await authedFetch(`${BACKEND_URL}/api/admin/coupon-set`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:newCode, percent:Number(newPercent||0), enabled:newEnabled})});
+                const d=await r.json();
+                if(!r.ok || !d.ok){ setMsg('Failed to save coupon'); return; }
+                setMsg('Coupon saved'); setNewCode(''); setNewPercent(''); setNewEnabled(true); await refreshCoupons();
+              }catch{ setMsg('Network error'); }
+            }}>Save Coupon</button>
+            <button className="btn" type="button" onClick={()=>{ setNewCode(''); setNewPercent(''); setNewEnabled(true); }}>Clear</button>
+            <button className="btn" type="button" onClick={refreshCoupons}>Refresh</button>
           </div>
         </div>
       </div>

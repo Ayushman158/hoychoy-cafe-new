@@ -29,6 +29,13 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
   const upiIntent = buildUpiIntent(UPI_ID, total, MERCHANT_NAME, "Order at HoyChoy Café", `HC-${Date.now()}`);
   const [copied,setCopied]=useState(false);
   const [agree,setAgree]=useState(true);
+  const [showDetails,setShowDetails]=useState(false);
+  const [couponCode,setCouponCode]=useState("");
+  const [coupon,setCoupon]=useState(null);
+  const discountPct = useMemo(()=>{
+    const p = Number(coupon?.percent||0);
+    return (p>0 && p<=100) ? p : 0;
+  },[coupon]);
 
   useEffect(()=>{localStorage.setItem("hc_cart",JSON.stringify(cart));},[cart]);
 
@@ -96,12 +103,29 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
     return distance>5 ? 80 : 50;
   }
 
-  const gst = Math.round(total*0.05);
+  const discountedSubtotal = Math.max(0, Math.round(total * (1 - discountPct/100)));
+  const gst = Math.round(discountedSubtotal*0.05);
   const deliveryFee = calculateDeliveryFee();
-  const grandTotal = total + gst + deliveryFee;
-  const canOrder = total >= 200;
+  const grandTotal = discountedSubtotal + gst + deliveryFee;
+  const minCheckTotal = total + deliveryFee; // Minimum order check uses item subtotal + delivery (not GST, not discounts)
+  const canOrder = minCheckTotal >= 200;
 
-  function submit(){onSubmit({name,phone,address,note,geo,manualLink:manualLink.trim(),total,items,gst,deliveryFee,grandTotal});}
+  function submit(){onSubmit({name,phone,address,note,geo,manualLink:manualLink.trim(),total,items,gst,deliveryFee,grandTotal, coupon: coupon?.code||null, discountPct});}
+
+  async function applyCoupon(){
+    try{
+      const code = couponCode.trim();
+      if(!code){ setCoupon(null); return; }
+      const r = await fetch(`${BACKEND_URL}/api/coupon/${encodeURIComponent(code)}`);
+      const d = await r.json();
+      if(r.ok && d && d.ok && d.percent>0){
+        setCoupon({ code: d.code, percent: Number(d.percent) });
+      }else{
+        setCoupon(null);
+        alert('Invalid or disabled coupon');
+      }
+    }catch{ setCoupon(null); alert('Could not validate coupon'); }
+  }
 
   async function payNow(){
     if(paying) return;
@@ -211,10 +235,26 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
           ))}
         </ul>
         <div className="border-t border-[#222] my-2"/>
-        <div className="row"><span>Subtotal</span><span className="price">₹{total}</span></div>
-        <div className="row"><span>GST (5%)</span><span className="price">₹{gst}</span></div>
-        <div className="row"><span>Delivery Fee</span><span className="price">₹{deliveryFee}</span></div>
         <div className="row font-bold"><span>Grand Total</span><span className="price">₹{grandTotal}</span></div>
+        <button className="px-2 py-1 text-sm mt-2 underline underline-offset-4" type="button" onClick={()=>setShowDetails(s=>!s)}>{showDetails? 'Hide price breakdown' : 'View bill details'}</button>
+        {showDetails && (
+          <div className="mt-2">
+            <div className="row"><span>Subtotal</span><span className="price">₹{total}</span></div>
+            {discountPct>0 && <div className="row"><span>Coupon ({discountPct}% off)</span><span className="price">-₹{Math.max(0, total - discountedSubtotal)}</span></div>}
+            <div className="row"><span>GST (5%)</span><span className="price">₹{gst}</span></div>
+            <div className="row"><span>Delivery Fee</span><span className="price">₹{deliveryFee}</span></div>
+          </div>
+        )}
+      </div>
+
+      <div className="card mt-3">
+        <div className="section-title">Apply Coupon</div>
+        <div className="flex gap-2">
+          <input className="flex-1 bg-[#111] border border-[#222] rounded-xl p-2" placeholder="Enter coupon code" value={couponCode} onChange={e=>setCouponCode(e.target.value)} />
+          <button className="btn" type="button" onClick={applyCoupon}>Apply</button>
+          {coupon && <button className="btn" type="button" onClick={()=>{ setCoupon(null); setCouponCode(''); }}>Remove</button>}
+        </div>
+        {coupon && <div className="text-success text-xs mt-2">Applied {coupon.code} • {discountPct}% off</div>}
       </div>
 
       <div className="card mt-3">
@@ -244,7 +284,7 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
           <input type="checkbox" className="w-4 h-4" checked={agree} onChange={e=>setAgree(e.target.checked)} />
           <span>I agree to the <a href="/terms" className="text-[#f5c84a] underline">Terms & Conditions</a></span>
         </label>
-        {!canOrder && <div className="text-error text-xs mb-2">Minimum order is ₹200</div>}
+        {!canOrder && <div className="text-error text-xs mb-2">Minimum order is ₹200 including delivery</div>}
         {!valid && <div className="text-error text-xs mb-2">Please fill in required details to pay</div>}
         <button className={`btn btn-primary w-full ${(!valid||paying)?'btn-disabled':''}`} onClick={payNow} disabled={!valid || paying}>{paying?'Starting…':`Pay ₹${grandTotal}`}</button>
         <div className="text-muted text-xs mt-2">You will be redirected to PhonePe to complete payment.</div>

@@ -3,6 +3,12 @@ import { createRoot } from "react-dom/client";
 import App from "./App.jsx";
 import "./index.css";
 
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  window.__bip = e;
+});
+
+window.addEventListener('appinstalled', ()=>{ window.__bip = null; });
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <App />
@@ -14,4 +20,3 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(()=>{});
   });
 }
-

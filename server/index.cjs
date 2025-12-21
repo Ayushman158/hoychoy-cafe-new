@@ -331,6 +331,39 @@ app.post('/api/admin/set-availability', requireAdmin, (req,res)=>{
   res.json({ok:true});
 });
 
+app.get('/api/admin/coupons', requireAdmin, (req,res)=>{
+  try{
+    overrides.coupons = overrides.coupons || {};
+    res.json({ok:true, coupons:overrides.coupons});
+  }catch(e){ res.status(500).json({error:'server-error'}); }
+});
+
+app.post('/api/admin/coupon-set', requireAdmin, (req,res)=>{
+  try{
+    const { code, percent, enabled } = req.body||{};
+    const c = String(code||'').trim();
+    if(!c) return res.status(400).json({error:'invalid-code'});
+    const p = Math.max(0, Math.min(100, Number(percent||0)));
+    overrides.coupons = overrides.coupons || {};
+    const key = c.toUpperCase();
+    overrides.coupons[key] = { percent:p, enabled: !!enabled };
+    saveOverrides(overrides);
+    res.json({ok:true, code:key, percent:p, enabled:!!enabled});
+  }catch(e){ res.status(500).json({error:'server-error'}); }
+});
+
+app.get('/api/coupon/:code', (req,res)=>{
+  try{
+    const raw = String(req.params.code||'').trim().toUpperCase();
+    const bucket = overrides.coupons || {};
+    const c = bucket[raw];
+    if(c && c.enabled && Number(c.percent)>0){
+      return res.json({ok:true, code:raw, percent:Number(c.percent)});
+    }
+    return res.status(404).json({ok:false});
+  }catch(e){ res.status(500).json({error:'server-error'}); }
+});
+
 app.post('/api/admin/refund', requireAdmin, async (req,res)=>{
   try{
     const { orderId, amount } = req.body||{};

@@ -148,7 +148,7 @@ const NonVegIcon = () => (
   function add(id){
   console.log('Adding item to cart:', id);
   console.log('Current cart:', cart);setCart(c=>({...c,[id]:(c[id]||0)+1}));setJustAdded(id);setTimeout(()=>setJustAdded(null),1000);} 
-  function handleProceed(){ if(cartTotal<200){ alert('Your order total is below ₹200. Please add more items to continue.'); return; } onProceed(); }
+  function handleProceed(){ onProceed(); }
   
 
   return (
@@ -177,6 +177,19 @@ const NonVegIcon = () => (
                     <a href="/" className="block px-2 py-2 rounded hover:bg-[#1a1a1a]">Main Menu</a>
                     <a href="/about" className="block px-2 py-2 rounded hover:bg-[#1a1a1a]">About</a>
                     <a href="/reserve" className="block px-2 py-2 rounded hover:bg-[#1a1a1a]">Reservations</a>
+                    <button
+                      className="text-left block px-2 py-2 rounded hover:bg-[#1a1a1a]"
+                      onClick={()=>{
+                        const bip = window.__bip;
+                        if(bip){ bip.prompt(); } else {
+                          const ua = navigator.userAgent || "";
+                          const isiOS = /iPhone|iPad|iPod/.test(ua);
+                          const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
+                          if(isiOS && isSafari){ alert("Tap Share, then 'Add to Home Screen' to install."); } else { alert("Use browser menu: Install app or Add to Home Screen."); }
+                        }
+                        setMenuOpen(false);
+                      }}
+                    >Install App</button>
                     
                   </div>
                 </>
@@ -302,8 +315,7 @@ const NonVegIcon = () => (
         <div className="row font-bold">
           <span>Total</span><span className="price">₹{cartTotal}</span>
         </div>
-        {cartTotal<200 && <div className="text-error text-xs mt-1">Minimum order is ₹200</div>}
-        <button className={`btn w-full mt-2 ${(appReason==='CLOSED_BY_OWNER' || cartTotal<200) ? 'btn-disabled' : 'btn-primary'}`} disabled={appReason==='CLOSED_BY_OWNER' || cartTotal<200} onClick={handleProceed}>Proceed to Checkout</button>
+        <button className={`btn w-full mt-2 ${appReason==='CLOSED_BY_OWNER' ? 'btn-disabled' : 'btn-primary'}`} disabled={appReason==='CLOSED_BY_OWNER'} onClick={handleProceed}>Proceed to Checkout</button>
         {cartTotal>0 && (
           <button className="btn w-full mt-2" type="button" onClick={()=>{ setCart({}); try{ localStorage.removeItem('hc_cart'); }catch{} }}>Clear Cart</button>
         )}
