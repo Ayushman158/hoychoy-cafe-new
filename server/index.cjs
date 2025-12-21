@@ -560,14 +560,32 @@ app.post('/api/payment-callback', (req,res)=>{
         const orderId = String(payload.originalMerchantOrderId||payload.orderId||merchantTransactionId||'');
         const txn = String(payload.transactionId||transactionId||'');
         const st = String(payload.state||state||'PENDING');
-        if(orderId){ payments.set(orderId, {status:st, transactionId:txn}); }
+        if(orderId){
+          payments.set(orderId, {status:st, transactionId:txn});
+          const mapped = st==='COMPLETED' ? 'PAID' : (st==='FAILED' ? 'FAILED' : 'PENDING');
+          const existing = findOrderById(orderId) || { id: orderId, createdAt: Date.now(), total: 0, items: [], customer: {}, status:'PENDING' };
+          const updated = { ...existing, status:mapped, txnId: txn||existing.txnId||null };
+          upsertOrder(updated);
+        }
         return res.json({ok:true, state:st});
       }catch(e){
-        if(merchantTransactionId){ payments.set(merchantTransactionId, {status:state, transactionId}); }
+        if(merchantTransactionId){
+          payments.set(merchantTransactionId, {status:state, transactionId});
+          const mapped = state==='COMPLETED' ? 'PAID' : (state==='FAILED' ? 'FAILED' : 'PENDING');
+          const existing = findOrderById(merchantTransactionId) || { id: merchantTransactionId, createdAt: Date.now(), total: 0, items: [], customer: {}, status:'PENDING' };
+          const updated = { ...existing, status:mapped, txnId: transactionId||existing.txnId||null };
+          upsertOrder(updated);
+        }
         return res.json({ok:true, state});
       }
     }else{
-      if(merchantTransactionId){ payments.set(merchantTransactionId, {status:state, transactionId}); }
+      if(merchantTransactionId){
+        payments.set(merchantTransactionId, {status:state, transactionId});
+        const mapped = state==='COMPLETED' ? 'PAID' : (state==='FAILED' ? 'FAILED' : 'PENDING');
+        const existing = findOrderById(merchantTransactionId) || { id: merchantTransactionId, createdAt: Date.now(), total: 0, items: [], customer: {}, status:'PENDING' };
+        const updated = { ...existing, status:mapped, txnId: transactionId||existing.txnId||null };
+        upsertOrder(updated);
+      }
       return res.json({ok:true, state});
     }
   }catch{
