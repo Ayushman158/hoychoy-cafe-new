@@ -141,9 +141,11 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
     const orderId = `HC-${generateOrderId()}-${Date.now()}`;
     const redirectUrl = `${window.location.origin}/?merchantTransactionId=${orderId}`;
     const callbackUrl = `${BACKEND_URL}/api/payment-callback`;
+    const snapshotItems = items.map(({item,qty})=>({id:item.id,name:item.name,qty,price:item.price}));
+    const snapshot = { items: snapshotItems, customer:{name,phone,address,note,geo,manualLink:manualLink.trim()}, total, gst, deliveryFee, grandTotal };
     const resp = await fetch(`${BACKEND_URL}/api/initiate-payment`,{
       method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({amount:grandTotal, orderId, customerPhone:phone, customerName:name, redirectUrl, callbackUrl})
+      body:JSON.stringify({amount:grandTotal, orderId, customerPhone:phone, customerName:name, redirectUrl, callbackUrl, snapshot})
     });
     const data = await resp.json();
     if(!resp.ok || !data.redirectUrl){
@@ -163,6 +165,12 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
     }else{
       window.location.href = tokenUrl;
     }
+    setTimeout(()=>{
+      try{
+        const stillHere = !document.hidden && window.location.href===tokenUrl;
+        if(stillHere){ window.location.href = `/?merchantTransactionId=${orderId}`; }
+      }catch{}
+    }, 6000);
   }
 
   async function resolveManual(){

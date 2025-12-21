@@ -158,6 +158,23 @@ const orders = [];
 const orderClients = new Set();
 const orderRecon = new Map();
 
+function findOrderById(id){
+  try{ return orders.find(o=>String(o.id)===String(id)) || null; }catch{ return null }
+}
+function upsertOrder(record){
+  try{
+    const idx = orders.findIndex(o=>String(o.id)===String(record.id));
+    if(idx<0){ orders.push(record); broadcast({type:'order.created', order:record}); return record; }
+    orders[idx] = { ...orders[idx], ...record };
+    broadcast({type:'order.updated', order:orders[idx]});
+    return orders[idx];
+  }catch{ return null }
+}
+function broadcast(payload){
+  const msg = `data: ${JSON.stringify(payload)}\n\n`;
+  orderClients.forEach((res)=>{ try{ res.write(msg); }catch{} });
+}
+
 function isWithinHours(){ const h=new Date().getHours(); return h>=12 && h<21; }
 app.get('/api/app-status', async (req,res)=>{
   try{ await refreshOverridesFromStore(); }catch{}
@@ -223,25 +240,19 @@ app.get('/api/debug/overrides', async (req,res)=>{
 app.post('/api/order', async (req,res)=>{
   try{
     const { orderId, transactionId, customer, items, total } = req.body||{};
-    if(!orderId || !Array.isArray(items) || !items.length || !customer || total==null){
+    if(!orderId || !customer){
       return res.status(400).json({error:'invalid-order'});
     }
-    const pay = payments.get(orderId);
-    if(!pay || String(pay.status)!=='SUCCESS'){
-      return res.status(400).json({error:'payment-not-verified'});
-    }
-    const record = {
-      id: orderId,
-      txnId: transactionId || pay.transactionId || null,
-      total: Number(total||0),
-      items,
+    const existing = findOrderById(orderId) || { id: orderId, createdAt: Date.now(), status:'PENDING' };
+    const updated = {
+      ...existing,
+      txnId: transactionId || existing.txnId || null,
+      total: Number(total||existing.total||0),
+      items: Array.isArray(items)?items:(existing.items||[]),
       customer,
-      createdAt: Date.now()
     };
-    orders.push(record);
-    const payload = `data: ${JSON.stringify({type:'order.created', order:record})}\n\n`;
-    orderClients.forEach((res)=>{ try{ res.write(payload); }catch{} });
-    return res.json({ok:true, order:record});
+    const saved = upsertOrder(updated);
+    return res.json({ok:true, order:saved});
   }catch(e){
     return res.status(500).json({error:'server-error', message:String(e)});
   }
@@ -473,7 +484,7 @@ app.post('/api/resolve-maps', async (req,res)=>{
 
 app.post('/api/initiate-payment', async (req,res)=>{
   try{
-    const { amount, orderId, customerPhone, customerName, expireAfter } = req.body;
+    const { amount, orderId, customerPhone, customerName, expireAfter, snapshot } = req.body;
     if(!amount || !orderId) return res.status(400).json({error:'amount and orderId required'});
     if(Number(amount) < MIN_ORDER_RUPEES) return res.status(400).json({error:'min-order-amount', min:MIN_ORDER_RUPEES});
     const client = getSdkClient();
@@ -494,6 +505,18 @@ app.post('/api/initiate-payment', async (req,res)=>{
     if(!url) return res.status(500).json({error:'phonepe-init-failed', details:response});
     payments.set(orderId, {status:'PENDING', amount});
     startReconcile(orderId, Number(expireAfter)||1800);
+    const pre = findOrderById(orderId);
+    const baseCust = { name:String(customerName||''), phone:String(customerPhone||'') };
+    const preRecord = {
+      id: orderId,
+      txnId: null,
+      total: Number(amount||0),
+      items: Array.isArray(snapshot?.items)?snapshot.items:(pre?.items||[]),
+      customer: snapshot?.customer || pre?.customer || baseCust,
+      createdAt: pre?.createdAt || Date.now(),
+      status: pre?.status || 'PENDING'
+    };
+    upsertOrder(preRecord);
     return res.json({redirectUrl:url, orderId});
   }catch(e){
     return res.status(500).json({error:'server-error', message:String(e)});
@@ -567,8 +590,15 @@ app.post('/api/phonepe/webhook', (req,res)=>{
         const txn = String(payload.transactionId||'');
         const st = String(payload.state||'PENDING');
         if(orderId){
-          const mapped = st==='COMPLETED' ? 'SUCCESS' : (st==='FAILED' ? 'FAILED' : 'PENDING');
+          const mapped = st==='COMPLETED' ? 'PAID' : (st==='FAILED' ? 'FAILED' : 'PENDING');
           payments.set(orderId, {status:mapped, transactionId:txn});
+          const existing = findOrderById(orderId) || { id: orderId, createdAt: Date.now(), total: 0, items: [], customer: {}, status:'PENDING' };
+          const updated = { ...existing, status:mapped, txnId: txn||existing.txnId||null };
+          upsertOrder(updated);
+        }
+        if(event && event.startsWith('pg.order')){
+          // Broadcast order state changes explicitly
+          broadcast({type:'order.state', orderId, state:st});
         }
         if(event && event.startsWith('pg.refund')){
           const rid = String(payload.merchantRefundId||payload.refundId||'');
@@ -604,17 +634,17 @@ app.get('/api/payment-status/:id', async (req,res)=>{
 app.get('/api/order-status/:id', async (req,res)=>{
   try{
     const orderId = req.params.id;
-    const client = getSdkClient();
-    if(!client) return res.status(500).json({error:'sdk-not-configured'});
-    const response = await client.getOrderStatus(String(orderId));
-    const status = response?.state || 'PENDING';
-    const list = Array.isArray(response?.payment_details) ? response.payment_details : [];
-    const latest = list.length ? list[list.length-1] : null;
-    const transactionId = latest?.transactionId || null;
-    payments.set(orderId, {status, transactionId});
-    res.json({status, transactionId, order: response});
+    const existing = findOrderById(orderId);
+    if(existing){
+      const status = existing.status || 'PENDING';
+      const transactionId = existing.txnId || null;
+      return res.json({status, transactionId, order: existing});
+    }
+    const pay = payments.get(orderId);
+    if(pay){ return res.json({status:pay.status||'PENDING', transactionId:pay.transactionId||null}); }
+    return res.status(404).json({error:'order-not-found'});
   }catch(e){
-    res.status(500).json({error:'sdk-order-status-failed', message:String(e)});
+    res.status(500).json({error:'server-error', message:String(e)});
   }
 });
 

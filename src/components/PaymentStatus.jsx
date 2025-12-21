@@ -26,7 +26,7 @@ export default function PaymentStatus(){
         }
         setStatus(data.status||'PENDING');
         setTxnId(data.transactionId||id);
-        if(data.status==='SUCCESS' || data.status==='COMPLETED') localStorage.setItem('pp_paid','SUCCESS');
+        if(data.status==='SUCCESS' || data.status==='COMPLETED' || data.status==='PAID') localStorage.setItem('pp_paid','SUCCESS');
         else localStorage.setItem('pp_paid', data.status||'PENDING');
       }catch(e){setError('Network error while verifying payment');}
     }
@@ -34,7 +34,7 @@ export default function PaymentStatus(){
   },[id]);
 
   useEffect(()=>{
-    if(!autoSent && (status==='SUCCESS' || status==='COMPLETED')){
+    if(!autoSent && (status==='SUCCESS' || status==='COMPLETED' || status==='PAID')){
       sendWhatsapp();
       setAutoSent(true);
     }
@@ -98,7 +98,7 @@ export default function PaymentStatus(){
             <div className="row"><span>Transaction ID</span><span className="font-bold">{txnId || id}</span></div>
           </div>
         )}
-        {(status==='SUCCESS' || status==='COMPLETED') && (
+        {(status==='SUCCESS' || status==='COMPLETED' || status==='PAID') && (
           <button className="btn btn-primary w-full mt-3" onClick={sendWhatsapp}>Submit Order</button>
         )}
         {status!=='SUCCESS' && !error && (
