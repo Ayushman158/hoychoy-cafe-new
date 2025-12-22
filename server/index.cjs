@@ -33,6 +33,8 @@ const WA_PHONE_NUMBER_ID = process.env.WA_PHONE_NUMBER_ID || '';
 const WA_ACCESS_TOKEN = process.env.WA_ACCESS_TOKEN || '';
 const MIN_ORDER_RUPEES = Number(process.env.MIN_ORDER_RUPEES||200);
 const ADMIN_REMEMBER_TTL_DAYS = Number(process.env.ADMIN_REMEMBER_TTL_DAYS||30);
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
+const TELEGRAM_ADMIN_CHAT_ID = process.env.TELEGRAM_ADMIN_CHAT_ID || '';
 
 const DATA_DIR = process.env.DATA_DIR || '/var/data';
 const OV_PATH = path.join(DATA_DIR, 'overrides.json');
@@ -163,6 +165,8 @@ const payments = new Map();
 const orders = [];
 const orderClients = new Set();
 const orderRecon = new Map();
+const tgOrderReminderTimers = new Map();
+const tgPayPendingTimers = new Map();
 
 function findOrderById(id){
   try{ return orders.find(o=>String(o.id)===String(id)) || null; }catch{ return null }
@@ -170,8 +174,16 @@ function findOrderById(id){
 function upsertOrder(record){
   try{
     const idx = orders.findIndex(o=>String(o.id)===String(record.id));
-    if(idx<0){ orders.push(record); broadcast({type:'order.created', order:record}); return record; }
+    if(idx<0){
+      let rec = { ...record };
+      try{ if(!rec.tgCreatedNotified){ const text = fmtTGNewOrder(rec); sendTelegram(text).catch(()=>{}); rec.tgCreatedNotified = true; } }catch{}
+      orders.push(rec);
+      scheduleOrderReminder(String(rec.id||''));
+      broadcast({type:'order.created', order:rec});
+      return rec;
+    }
     orders[idx] = { ...orders[idx], ...record };
+    try{ const st = String(orders[idx].status||''); if(st==='ACCEPTED'||st==='DELIVERED'||st==='CANCELLED'){ clearOrderReminder(String(orders[idx].id||'')); } }catch{}
     broadcast({type:'order.updated', order:orders[idx]});
     return orders[idx];
   }catch{ return null }
@@ -207,6 +219,84 @@ function formatOrderWhatsApp(o){
     lines.push(link);
     return lines.join('\n');
   }catch{ return 'New paid order'; }
+}
+
+async function sendTelegram(text){
+  try{
+    const tok = TELEGRAM_BOT_TOKEN;
+    const chat = TELEGRAM_ADMIN_CHAT_ID;
+    if(!tok||!chat) return {ok:false};
+    const url = `https://api.telegram.org/bot${tok}/sendMessage`;
+    const r = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:chat,text:String(text)})});
+    const data = await r.json().catch(()=>null);
+    return {ok:r.ok, data};
+  }catch{ return {ok:false}; }
+}
+
+function fmtTGNewOrder(o){
+  try{
+    const name = (o.customer&&o.customer.name)||'';
+    const amt = Number(o.total||0);
+    const st = String(o.status||'INITIATED');
+    const lines = [];
+    lines.push(`🆕 New Order`);
+    if(name) lines.push(`Name: ${name}`);
+    lines.push(`ID: ${o.id}`);
+    lines.push(`Amount: ₹${amt}`);
+    lines.push(`Method: PhonePe`);
+    lines.push(`Payment: ${st}`);
+    return lines.join('\n');
+  }catch{ return 'New order'; }
+}
+function fmtTGPaySuccess(o){
+  try{
+    const amt = Number(o.total||0);
+    const lines = [];
+    lines.push(`💳 Payment Successful`);
+    lines.push(`ID: ${o.id}`);
+    lines.push(`Amount: ₹${amt}`);
+    lines.push(`Method: PhonePe`);
+    return lines.join('\n');
+  }catch{ return 'Payment successful'; }
+}
+function fmtTGPayFailed(o){
+  try{
+    const amt = Number(o.total||0);
+    const lines = [];
+    lines.push(`❌ Payment Failed`);
+    lines.push(`ID: ${o.id}`);
+    lines.push(`Amount: ₹${amt}`);
+    lines.push(`Method: PhonePe`);
+    return lines.join('\n');
+  }catch{ return 'Payment failed'; }
+}
+function fmtTGPendingPayment(o){
+  try{
+    const lines = [];
+    lines.push(`⚠️ Payment Pending`);
+    lines.push(`ID: ${o.id}`);
+    lines.push(`Action: Check admin panel`);
+    return lines.join('\n');
+  }catch{ return 'Payment pending'; }
+}
+function fmtTGPendingOrder(o){
+  try{
+    const lines = [];
+    lines.push(`⏰ Pending Order Reminder`);
+    lines.push(`ID: ${o.id}`);
+    lines.push(`Waiting for admin action`);
+    return lines.join('\n');
+  }catch{ return 'Pending order reminder'; }
+}
+function fmtTGStatusChange(o, status){
+  try{
+    const pretty = String(status||o.status||'UPDATED').toUpperCase();
+    const lines = [];
+    lines.push(`🔄 Order Status Updated`);
+    lines.push(`ID: ${o.id}`);
+    lines.push(`Status: ${pretty}`);
+    return lines.join('\n');
+  }catch{ return 'Order status updated'; }
 }
 
 function isWithinHours(){ const h=new Date().getHours(); return h>=12 && h<21; }
@@ -540,6 +630,7 @@ app.post('/api/initiate-payment', async (req,res)=>{
     if(!url) return res.status(500).json({error:'phonepe-init-failed', details:response});
     payments.set(orderId, {status:'PENDING', amount});
     startReconcile(orderId, Number(expireAfter)||1800);
+    schedulePaymentPendingReminder(String(orderId));
     const pre = findOrderById(orderId);
     const baseCust = { name:String(customerName||''), phone:String(customerPhone||'') };
     const preRecord = {
@@ -582,6 +673,7 @@ app.post('/api/initiate-test-payment', async (req,res)=>{
     if(!url) return res.status(500).json({error:'phonepe-init-failed', details:response});
     payments.set(orderId, {status:'PENDING', amount:1});
     startReconcile(orderId, 1800);
+    schedulePaymentPendingReminder(String(orderId));
     const preRecord = {
       id: orderId,
       txnId: null,
@@ -644,8 +736,14 @@ app.post('/api/payment-callback', (req,res)=>{
           if(shouldNotify){
             const text = formatOrderWhatsApp(updated);
             sendWhatsApp(text).catch(()=>{});
-            updated = { ...updated, notified:true };
+            sendTelegram(fmtTGPaySuccess(updated)).catch(()=>{});
+            updated = { ...updated, notified:true, tgPaySuccessNotified:true };
           }
+          if(mapped==='FAILED' && !existing.tgPayFailedNotified){
+            sendTelegram(fmtTGPayFailed(updated)).catch(()=>{});
+            updated = { ...updated, tgPayFailedNotified:true };
+          }
+          if(mapped==='PAID' || mapped==='FAILED'){ clearPaymentPendingReminder(String(orderId)); }
           upsertOrder(updated);
         }
         return res.json({ok:true, state:st});
@@ -659,8 +757,14 @@ app.post('/api/payment-callback', (req,res)=>{
           if(shouldNotify){
             const text = formatOrderWhatsApp(updated);
             sendWhatsApp(text).catch(()=>{});
-            updated = { ...updated, notified:true };
+            sendTelegram(fmtTGPaySuccess(updated)).catch(()=>{});
+            updated = { ...updated, notified:true, tgPaySuccessNotified:true };
           }
+          if(mapped==='FAILED' && !existing.tgPayFailedNotified){
+            sendTelegram(fmtTGPayFailed(updated)).catch(()=>{});
+            updated = { ...updated, tgPayFailedNotified:true };
+          }
+          if(mapped==='PAID' || mapped==='FAILED'){ clearPaymentPendingReminder(String(merchantTransactionId)); }
           upsertOrder(updated);
         }
         return res.json({ok:true, state});
@@ -675,8 +779,14 @@ app.post('/api/payment-callback', (req,res)=>{
         if(shouldNotify){
           const text = formatOrderWhatsApp(updated);
           sendWhatsApp(text).catch(()=>{});
-          updated = { ...updated, notified:true };
+          sendTelegram(fmtTGPaySuccess(updated)).catch(()=>{});
+          updated = { ...updated, notified:true, tgPaySuccessNotified:true };
         }
+        if(mapped==='FAILED' && !existing.tgPayFailedNotified){
+          sendTelegram(fmtTGPayFailed(updated)).catch(()=>{});
+          updated = { ...updated, tgPayFailedNotified:true };
+        }
+        if(mapped==='PAID' || mapped==='FAILED'){ clearPaymentPendingReminder(String(merchantTransactionId)); }
         upsertOrder(updated);
       }
       return res.json({ok:true, state});
@@ -709,8 +819,14 @@ app.post('/api/phonepe/webhook', (req,res)=>{
           if(shouldNotify){
             const text = formatOrderWhatsApp(updated);
             sendWhatsApp(text).catch(()=>{});
-            updated = { ...updated, notified:true };
+            sendTelegram(fmtTGPaySuccess(updated)).catch(()=>{});
+            updated = { ...updated, notified:true, tgPaySuccessNotified:true };
           }
+          if(mapped==='FAILED' && !existing.tgPayFailedNotified){
+            sendTelegram(fmtTGPayFailed(updated)).catch(()=>{});
+            updated = { ...updated, tgPayFailedNotified:true };
+          }
+          if(mapped==='PAID' || mapped==='FAILED'){ clearPaymentPendingReminder(String(orderId)); }
           upsertOrder(updated);
         }
         if(event && event.startsWith('pg.order')){
@@ -801,7 +917,22 @@ function startReconcile(orderId, expireAfter){
   }
   let t=null;
   function setTimer(ms){ clearTimeout(t); t=setTimeout(poll, ms); orderRecon.set(orderId,{t}); }
-  function stop(){ try{ clearTimeout(t); orderRecon.delete(orderId); }catch{} }
+  function stop(){
+    try{
+      clearTimeout(t);
+      orderRecon.delete(orderId);
+      const pay = payments.get(orderId)||{};
+      const st = String(pay.status||'');
+      if(st==='PENDING'){
+        const ord = findOrderById(orderId) || { id: orderId };
+        if(!ord.tgPendingPayNotified){
+          sendTelegram(fmtTGPendingPayment(ord)).catch(()=>{});
+          const updated = { ...ord, tgPendingPayNotified:true };
+          upsertOrder(updated);
+        }
+      }
+    }catch{}
+  }
   scheduleNext();
 }
 
@@ -816,6 +947,7 @@ app.post('/api/admin/order-delivered', requireAdmin, (req,res)=>{
     const idx = orders.findIndex(o=>String(o.id)===String(id));
     if(idx<0) return res.status(404).json({error:'order-not-found'});
     orders[idx] = { ...orders[idx], status:'DELIVERED', deliveredAt: Date.now() };
+    try{ sendTelegram(fmtTGStatusChange(orders[idx],'DELIVERED')).catch(()=>{}); }catch{}
     const payload = `data: ${JSON.stringify({type:'order.updated', order:orders[idx]})}\n\n`;
     orderClients.forEach((res)=>{ try{ res.write(payload); }catch{} });
     return res.json({ok:true, order:orders[idx]});
@@ -830,6 +962,7 @@ app.post('/api/admin/order-accept', requireAdmin, (req,res)=>{
     const idx = orders.findIndex(o=>String(o.id)===String(id));
     if(idx<0) return res.status(404).json({error:'order-not-found'});
     orders[idx] = { ...orders[idx], status:'ACCEPTED', acceptedAt: Date.now() };
+    try{ sendTelegram(fmtTGStatusChange(orders[idx],'ACCEPTED')).catch(()=>{}); }catch{}
     const payload = `data: ${JSON.stringify({type:'order.updated', order:orders[idx]})}\n\n`;
     orderClients.forEach((res)=>{ try{ res.write(payload); }catch{} });
     return res.json({ok:true, order:orders[idx]});
@@ -889,3 +1022,52 @@ app.get('/sitemap.xml', (req, res) => {
   res.set('Content-Type','application/xml');
   res.send(xml);
 });
+function scheduleOrderReminder(orderId, delayMs){
+  try{
+    const id = String(orderId||'');
+    if(!id) return;
+    const o = findOrderById(id) || {};
+    if(o.tgOrderReminderSent) return;
+    if(tgOrderReminderTimers.has(id)) return;
+    const ms = Number(delayMs||600000);
+    const t = setTimeout(()=>{
+      try{
+        const cur = findOrderById(id) || {};
+        const st = String(cur.status||'');
+        if(!cur.tgOrderReminderSent && st!=='ACCEPTED' && st!=='DELIVERED' && st!=='CANCELLED'){
+          sendTelegram(fmtTGPendingOrder(cur)).catch(()=>{});
+          const updated = { ...cur, tgOrderReminderSent:true };
+          upsertOrder(updated);
+        }
+      }catch{}
+      tgOrderReminderTimers.delete(id);
+    }, ms);
+    tgOrderReminderTimers.set(id,{t});
+  }catch{}
+}
+function clearOrderReminder(orderId){
+  try{ const id=String(orderId||''); const rec=tgOrderReminderTimers.get(id); if(rec&&rec.t){ clearTimeout(rec.t); } tgOrderReminderTimers.delete(id); }catch{}
+}
+function schedulePaymentPendingReminder(orderId, delayMs){
+  try{
+    const id = String(orderId||'');
+    if(!id) return;
+    if(tgPayPendingTimers.has(id)) return;
+    const ms = Number(delayMs||600000);
+    const t = setTimeout(()=>{
+      try{
+        const ord = findOrderById(id) || { id };
+        if(!ord.tgPendingPayNotified){
+          sendTelegram(fmtTGPendingPayment(ord)).catch(()=>{});
+          const updated = { ...ord, tgPendingPayNotified:true };
+          upsertOrder(updated);
+        }
+      }catch{}
+      tgPayPendingTimers.delete(id);
+    }, ms);
+    tgPayPendingTimers.set(id,{t});
+  }catch{}
+}
+function clearPaymentPendingReminder(orderId){
+  try{ const id=String(orderId||''); const rec=tgPayPendingTimers.get(id); if(rec&&rec.t){ clearTimeout(rec.t); } tgPayPendingTimers.delete(id); }catch{}
+}
