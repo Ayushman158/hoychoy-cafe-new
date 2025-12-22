@@ -298,7 +298,8 @@ export default function Admin(){
   }
 
   return (
-    <section className="max-w-[900px] mx-auto px-4 py-6">
+    <section className="max-w-[900px] mx-auto px-4 pt-[calc(env(safe-area-inset-top)+8px)] pb-[calc(env(safe-area-inset-bottom)+12px)] md:pt-0 overflow-x-hidden">
+      <div className="hc-safe-buffer"></div>
       <div className="flex items-center justify-between">
         <div className="font-bold text-lg">Admin Panel</div>
         <div className="flex items-center gap-2">
@@ -313,7 +314,7 @@ export default function Admin(){
       {menuOpen && authed && (
         <div className="fixed inset-0 z-[80]" role="dialog" aria-modal="true">
           <div className="absolute inset-0 bg-black/60" onClick={()=>setMenuOpen(false)}></div>
-          <div className="absolute right-0 top-0 h-full w-[82%] max-w-[360px] bg-[#0f0f0f] border-l border-[#222] shadow-xl p-3 flex flex-col gap-2">
+          <div className="absolute right-0 top-0 h-full w-[86%] sm:w-[82%] max-w-[360px] bg-[#0f0f0f] border-l border-[#222] shadow-xl p-3 pt-[calc(env(safe-area-inset-top)+8px)] flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <div className="font-bold">Admin Menu</div>
               <button className="btn" type="button" onClick={()=>setMenuOpen(false)}>✕</button>
@@ -325,14 +326,14 @@ export default function Admin(){
         </div>
       )}
       {showBell && (
-        <div className="fixed right-4 top-14 z-[60] w-72 bg-[#0f0f0f] border border-[#222] rounded-xl p-2 shadow-lg">
+        <div className="fixed inset-x-2 sm:left-auto sm:right-4 top-[calc(env(safe-area-inset-top)+52px)] z-[60] w-auto sm:w-72 bg-[#0f0f0f] border border-[#222] rounded-xl p-2 shadow-lg">
           <div className="flex items-center justify-between">
             <div className="font-bold">Notifications</div>
             <button className="text-xs underline" type="button" onClick={()=>{setUnread(0); clearAppBadge(); setShowBell(false);}}>Mark all read</button>
           </div>
           <ul className="max-h-64 overflow-auto mt-2">
             {notifs.map((n,i)=>(
-              <li key={i} className="row"><span>{n.title}</span><span className="text-sm">{n.body}</span></li>
+              <li key={i} className="row"><span className="min-w-0 truncate mr-2">{n.title}</span><span className="text-sm min-w-0 truncate">{n.body}</span></li>
             ))}
           </ul>
         </div>
@@ -343,9 +344,9 @@ export default function Admin(){
           <div className="section-title">Admin Login</div>
           <form onSubmit={login} className="flex flex-col gap-2">
             <input className="bg-[#111] border border-[#222] rounded-xl p-2" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} />
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               <input className="flex-1 bg-[#111] border border-[#222] rounded-xl p-2" placeholder="Password" type={showPwd?'text':'password'} value={password} onChange={e=>setPassword(e.target.value)} />
-              <button type="button" className="btn" onClick={()=>setShowPwd(v=>!v)}>{showPwd?'Hide':'Show'}</button>
+              <button type="button" className="btn w-full sm:w-auto" onClick={()=>setShowPwd(v=>!v)}>{showPwd?'Hide':'Show'}</button>
             </div>
             <label className="flex items-center gap-2 text-xs">
               <input type="checkbox" checked={remember} onChange={e=>setRemember(e.target.checked)} />
@@ -359,32 +360,33 @@ export default function Admin(){
       <div className="card mt-3">
         <div className="section-title">Restaurant Status</div>
         <div className="row"><span>Current</span><span className="font-bold">{status.open?'OPEN':'CLOSED'} ({status.reason})</span></div>
-        <div className="flex items-center gap-3 mt-2">
-          <span>Owner Toggle</span>
+        <div className="flex flex-wrap items-center gap-3 mt-2">
+          <span className="text-sm">Owner Toggle</span>
           <button
             type="button"
             onClick={()=>setOpen(ownerClosed)}
-            className={`relative inline-flex items-center h-8 w-20 rounded-full border transition ${!ownerClosed?'bg-[#f5c84a] text-black border-[#f5c84a]':'bg-transparent text-white border-[#444]'} ${toggling?'opacity-70 cursor-not-allowed':''}`}
+            aria-pressed={!ownerClosed}
+            className={`relative inline-flex items-center h-10 w-24 rounded-full border transition ${!ownerClosed?'bg-[#f5c84a] text-black border-[#f5c84a]':'bg-transparent text-white border-[#444]'} ${toggling?'opacity-70 cursor-not-allowed':''}`}
             disabled={toggling}
           >
-            <span className="absolute left-2 text-xs font-bold">{!ownerClosed?'ON':''}</span>
-            <span className="absolute right-2 text-xs font-bold">{ownerClosed?'OFF':''}</span>
-            <span className={`inline-block h-6 w-6 rounded-full bg-white shadow transform transition ${!ownerClosed?'translate-x-12':'translate-x-1'}`}></span>
+            <span className={`absolute left-3 text-xs font-bold ${!ownerClosed?'opacity-100':'opacity-40'}`}>ON</span>
+            <span className={`absolute right-3 text-xs font-bold ${ownerClosed?'opacity-100':'opacity-40'}`}>OFF</span>
+            <span className={`inline-block h-7 w-7 rounded-full bg-white shadow transform transition ${!ownerClosed?'translate-x-12':'translate-x-1'}`}></span>
           </button>
           <span className="text-sm text-muted">{!ownerClosed?'Open':'Closed by owner'}</span>
           {untilLabel && <span className="text-xs text-[#f5c84a] ml-2">{untilLabel}</span>}
           {ownerClosed===false && (
-            <span className="flex items-center gap-2 ml-4">
+            <span className="flex flex-wrap items-center gap-2 ml-0 sm:ml-4">
               <span className="text-xs">Close for</span>
-              <select className="bg-[#111] border border-[#222] rounded-xl p-1 text-xs" value={closureDuration} onChange={e=>setClosureDuration(e.target.value)}>
+              <select className="bg-[#111] border border-[#222] rounded-xl p-1 text-xs w-full sm:w-auto" value={closureDuration} onChange={e=>setClosureDuration(e.target.value)}>
                 <option value="0">Until I reopen</option>
                 <option value="7200000">2 hours</option>
                 <option value="21600000">6 hours</option>
                 <option value="43200000">12 hours</option>
               </select>
-              <span className="text-xs ml-2">or until</span>
-              <input type="date" className="bg-[#111] border border-[#222] rounded-xl p-1 text-xs" value={customDate} onChange={e=>setCustomDate(e.target.value)} />
-              <input type="time" className="bg-[#111] border border-[#222] rounded-xl p-1 text-xs" value={customTime} onChange={e=>setCustomTime(e.target.value)} />
+              <span className="text-xs">or until</span>
+              <input type="date" className="bg-[#111] border border-[#222] rounded-xl p-1 text-xs w-full sm:w-auto" value={customDate} onChange={e=>setCustomDate(e.target.value)} />
+              <input type="time" className="bg-[#111] border border-[#222] rounded-xl p-1 text-xs w-full sm:w-auto" value={customTime} onChange={e=>setCustomTime(e.target.value)} />
             </span>
           )}
         </div>
@@ -445,7 +447,7 @@ export default function Admin(){
             ))}
           </ul>
           <div className="border-t border-[#222] my-2"/>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <input className="bg-[#111] border border-[#222] rounded-xl p-2" placeholder="Code" value={newCode} onChange={e=>setNewCode(e.target.value)} />
             <input className="bg-[#111] border border-[#222] rounded-xl p-2" placeholder="Percent" value={newPercent} onChange={e=>setNewPercent(e.target.value)} />
             <select className="bg-[#111] border border-[#222] rounded-xl p-2" value={newEnabled?'enabled':'disabled'} onChange={e=>setNewEnabled(e.target.value==='enabled')}>
@@ -471,9 +473,9 @@ export default function Admin(){
       )}
       {authed && (
       <div className="card mt-3">
-        <div className="section-title flex items-center justify-between">
+        <div className="section-title flex flex-wrap items-center justify-between gap-2">
           <span>Menu Availability</span>
-          <input className="bg-[#111] border border-[#222] rounded-xl p-2 w-56" placeholder="Search items" value={query} onChange={e=>setQuery(e.target.value)} />
+          <input className="bg-[#111] border border-[#222] rounded-xl p-2 w-full sm:w-56" placeholder="Search items" value={query} onChange={e=>setQuery(e.target.value)} />
         </div>
         <ul className="flex flex-col gap-2 max-h-[300px] overflow-auto">
           {(items||[]).filter(it=>it.name.toLowerCase().includes(query.toLowerCase())).map(it=> (
@@ -539,9 +541,9 @@ export default function Admin(){
           {(filteredOrders||[]).map((o)=> (
             <li key={o.id} className="row">
               <span>#{o.id}</span>
-              <span className="flex items-center gap-2">
+              <span className="flex flex-wrap items-center gap-2 min-w-0">
                 <span className="font-bold">₹{o.total}</span>
-                <span>{o.customer?.name}</span>
+                <span className="min-w-0 truncate">{o.customer?.name}</span>
                 <span className="text-muted text-xs">{new Date(o.createdAt).toLocaleTimeString()}</span>
                 {o.status==='DELIVERED' && <span className="text-success text-xs">Delivered</span>}
                 <button className="px-2 py-1 rounded-md bg-[#2a2a2a] border border-[#3a3a3a]" onClick={()=>setSelected(o)}>View</button>
