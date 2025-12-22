@@ -177,6 +177,7 @@ function upsertOrder(record){
     if(idx<0){
       let rec = { ...record };
       try{ if(!rec.tgCreatedNotified){ const text = fmtTGNewOrder(rec); sendTelegram(text).catch(()=>{}); rec.tgCreatedNotified = true; } }catch{}
+      try{ const st=String(rec.status||'PENDING'); if(st==='PENDING' && !rec.tgPendingPayNotified){ sendTelegram(fmtTGPendingPayment(rec)).catch(()=>{}); rec.tgPendingPayNotified=true; } }catch{}
       orders.push(rec);
       scheduleOrderReminder(String(rec.id||''));
       broadcast({type:'order.created', order:rec});
@@ -376,7 +377,27 @@ app.post('/api/order', async (req,res)=>{
       items: Array.isArray(items)?items:(existing.items||[]),
       customer,
     };
-    const saved = upsertOrder(updated);
+    let saved = upsertOrder(updated);
+    try{
+      const pay = payments.get(orderId) || {};
+      const raw = String(pay.status||saved.status||'PENDING');
+      const mapped = (raw==='COMPLETED'||raw==='SUCCESS'||raw==='PAID') ? 'PAID' : (raw==='FAILED' ? 'FAILED' : 'PENDING');
+      if(mapped==='PAID' && !saved.tgPaySuccessNotified){
+        sendTelegram(fmtTGPaySuccess(saved)).catch(()=>{});
+        clearPaymentPendingReminder(String(orderId));
+        saved = upsertOrder({ ...saved, tgPaySuccessNotified:true }) || saved;
+      }else if(mapped==='FAILED' && !saved.tgPayFailedNotified){
+        sendTelegram(fmtTGPayFailed(saved)).catch(()=>{});
+        clearPaymentPendingReminder(String(orderId));
+        saved = upsertOrder({ ...saved, tgPayFailedNotified:true }) || saved;
+      }else if(mapped==='PENDING'){
+        schedulePaymentPendingReminder(String(orderId));
+        if(!saved.tgPendingPayNotified){
+          sendTelegram(fmtTGPendingPayment(saved)).catch(()=>{});
+          saved = upsertOrder({ ...saved, tgPendingPayNotified:true }) || saved;
+        }
+      }
+    }catch{}
     return res.json({ok:true, order:saved});
   }catch(e){
     return res.status(500).json({error:'server-error', message:String(e)});
