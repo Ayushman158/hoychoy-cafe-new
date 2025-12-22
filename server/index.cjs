@@ -362,6 +362,23 @@ app.get('/api/admin/me', (req,res)=>{
   return res.json({authed:ok});
 });
 
+app.post('/api/admin/debug/send-telegram', requireAdmin, async (req,res)=>{
+  try{
+    const { text } = req.body||{};
+    const msg = String(text||'HoyChoy order notifications active');
+    const result = await sendTelegram(msg);
+    return res.json({ok:!!(result&&result.ok), details:result&&result.data||null});
+  }catch(e){ return res.status(500).json({error:'server-error'}); }
+});
+
+app.get('/api/admin/debug/telegram-config', requireAdmin, (req,res)=>{
+  try{
+    const hasToken = !!TELEGRAM_BOT_TOKEN;
+    const hasChat = !!TELEGRAM_ADMIN_CHAT_ID;
+    res.json({ok:true, TELEGRAM_BOT_TOKEN_set:hasToken, TELEGRAM_ADMIN_CHAT_ID_set:hasChat});
+  }catch{ res.status(500).json({error:'server-error'}); }
+});
+
 app.get('/api/menu-overrides', (req,res)=>{
   refreshOverridesFromStore().finally(()=>{ res.json(overrides||{}); });
 });
