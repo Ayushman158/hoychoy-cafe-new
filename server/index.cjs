@@ -308,9 +308,29 @@ function fmtTGPayFailed(o){
 }
 function fmtTGPendingPayment(o){
   try{
+    const amt = Number(o.total||0);
+    const items = Array.isArray(o.items)?o.items:[];
+    const cust = o.customer||{};
+    const nm = String(cust.name||'').trim();
+    const ph = String(cust.phone||'').trim();
+    const addr = String(cust.address||'').trim();
+    let map = '';
+    try{
+      const g=cust.geo;
+      if(g && g.lat!=null && g.lng!=null){ map = `https://maps.google.com/?q=${Number(g.lat)},${Number(g.lng)}`; }
+      else if(cust.manualLink){ map = String(cust.manualLink); }
+    }catch{}
+    const names = items.map(it=>`${(it.item&&it.item.name)||it.name||''} ×${Number(it.qty||0)}`).filter(Boolean);
+    const preview = names.slice(0,4).join(', ');
+    const more = names.length>4 ? `, +${names.length-4} more` : '';
     const lines = [];
     lines.push(`⚠️ Payment Pending`);
     lines.push(`ID: ${o.id}`);
+    if(amt>0) lines.push(`Amount: ₹${amt}`);
+    if(preview) lines.push(preview + more);
+    if(nm || ph) lines.push(`👤 ${nm}${ph?` · ${ph}`:''}`);
+    if(addr) lines.push(`🏠 ${addr}`);
+    if(map) lines.push(`📍 ${map}`);
     lines.push(`Action: Check admin panel`);
     return lines.join('\n');
   }catch{ return 'Payment pending'; }
@@ -768,6 +788,48 @@ app.post('/api/initiate-test-payment', async (req,res)=>{
   }
 });
 
+// Admin-only: generate a ₹1 test payment link in any environment
+app.post('/api/admin/initiate-1rs-test', requireAdmin, async (req,res)=>{
+  try{
+    const { customerPhone, customerName, redirectOrigin } = req.body||{};
+    const orderId = `HC-TEST-1RS-${Date.now()}`;
+    const client = getSdkClient();
+    if(!client) return res.status(500).json({error:'sdk-not-configured'});
+    const paisa = 100; // ₹1
+    const metaInfo = MetaInfo.builder()
+      .udf1(String(customerPhone||''))
+      .udf2(String(customerName||'TEST'))
+      .build();
+    const origin = String(redirectOrigin||PUBLIC_BASE_URL||'https://www.hoychoycafe.com').replace(/\/$/,'');
+    const rurl = `${origin}/?merchantTransactionId=${orderId}`;
+    const request = StandardCheckoutPayRequest.builder()
+      .merchantOrderId(String(orderId))
+      .amount(paisa)
+      .redirectUrl(String(rurl))
+      .metaInfo(metaInfo)
+      .build();
+    const response = await client.pay(request);
+    const url = response?.redirect_url || response?.redirectUrl || null;
+    if(!url) return res.status(500).json({error:'phonepe-init-failed', details:response});
+    payments.set(orderId, {status:'PENDING', amount:1});
+    startReconcile(orderId, 1800);
+    schedulePaymentPendingReminder(String(orderId));
+    const preRecord = {
+      id: orderId,
+      txnId: null,
+      total: 1,
+      items: [],
+      customer: { name:String(customerName||'TEST'), phone:String(customerPhone||'') },
+      createdAt: Date.now(),
+      status: 'PENDING'
+    };
+    upsertOrder(preRecord);
+    return res.json({redirectUrl:url, orderId});
+  }catch(e){
+    return res.status(500).json({error:'server-error', message:String(e)});
+  }
+});
+
 app.post('/api/create-sdk-order', async (req,res)=>{
   try{
     const { amount, orderId } = req.body||{};
@@ -974,6 +1036,23 @@ function startReconcile(orderId, expireAfter){
       const latest = list.length ? list[list.length-1] : null;
       const txn = latest?.transactionId || null;
       payments.set(orderId,{status, transactionId:txn});
+      try{
+        if(status==='COMPLETED' || status==='FAILED'){
+          const mapped = status==='COMPLETED' ? 'PAID' : 'FAILED';
+          const existing = findOrderById(orderId) || { id: orderId, createdAt: Date.now(), total: 0, items: [], customer: {}, status:'PENDING' };
+          let updated = { ...existing, status:mapped, txnId: txn||existing.txnId||null };
+          if(mapped==='PAID' && !existing.tgPaySuccessNotified){
+            sendTelegram(fmtTGPaySuccess(updated)).then(r=>{ if(r && r.ok){ updated = { ...updated, tgPaySuccessNotified:true, notified:true }; } else { try{ console.log('telegram_send_failed_pay_success', r && r.data); }catch{} } }).catch(()=>{ try{ console.log('telegram_send_error_pay_success'); }catch{} });
+          }
+          if(mapped==='FAILED' && !existing.tgPayFailedNotified){
+            sendTelegram(fmtTGPayFailed(updated)).then(r=>{ if(r && r.ok){ updated = { ...updated, tgPayFailedNotified:true }; } else { try{ console.log('telegram_send_failed_pay_failed', r && r.data); }catch{} } }).catch(()=>{ try{ console.log('telegram_send_error_pay_failed'); }catch{} });
+          }
+          clearPaymentPendingReminder(String(orderId));
+          upsertOrder(updated);
+          stop();
+          return;
+        }
+      }catch{}
       const age = Math.floor((Date.now()-start)/1000);
       if(status==='COMPLETED' || status==='FAILED' || age>=expireAfter){ stop(); return; }
       scheduleNext();
