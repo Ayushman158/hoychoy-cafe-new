@@ -176,8 +176,25 @@ function upsertOrder(record){
     const idx = orders.findIndex(o=>String(o.id)===String(record.id));
     if(idx<0){
       let rec = { ...record };
-      try{ if(!rec.tgCreatedNotified){ const text = fmtTGNewOrder(rec); sendTelegram(text).catch(()=>{}); rec.tgCreatedNotified = true; } }catch{}
-      try{ const st=String(rec.status||'PENDING'); if(st==='PENDING' && !rec.tgPendingPayNotified){ sendTelegram(fmtTGPendingPayment(rec)).catch(()=>{}); rec.tgPendingPayNotified=true; } }catch{}
+      try{
+        if(!rec.tgCreatedNotified){
+          const text = fmtTGNewOrder(rec);
+          sendTelegram(text).then(r=>{
+            if(r && r.ok){
+              try{ const i=orders.findIndex(o=>String(o.id)===String(rec.id)); if(i>=0){ orders[i] = { ...orders[i], tgCreatedNotified:true }; broadcast({type:'order.updated', order:orders[i]}); } }catch{}
+            }else{ try{ console.log('telegram_send_failed_new_order', r && r.data); }catch{} }
+          }).catch(()=>{ try{ console.log('telegram_send_error_new_order'); }catch{} });
+        }
+      }catch{}
+      try{
+        const st=String(rec.status||'PENDING');
+        if(st==='PENDING' && !rec.tgPendingPayNotified){
+          sendTelegram(fmtTGPendingPayment(rec)).then(r=>{
+            if(r && r.ok){ try{ const i=orders.findIndex(o=>String(o.id)===String(rec.id)); if(i>=0){ orders[i] = { ...orders[i], tgPendingPayNotified:true }; broadcast({type:'order.updated', order:orders[i]}); } }catch{} }
+            else{ try{ console.log('telegram_send_failed_pending', r && r.data); }catch{} }
+          }).catch(()=>{ try{ console.log('telegram_send_error_pending'); }catch{} });
+        }
+      }catch{}
       orders.push(rec);
       scheduleOrderReminder(String(rec.id||''));
       broadcast({type:'order.created', order:rec});
@@ -383,18 +400,23 @@ app.post('/api/order', async (req,res)=>{
       const raw = String(pay.status||saved.status||'PENDING');
       const mapped = (raw==='COMPLETED'||raw==='SUCCESS'||raw==='PAID') ? 'PAID' : (raw==='FAILED' ? 'FAILED' : 'PENDING');
       if(mapped==='PAID' && !saved.tgPaySuccessNotified){
-        sendTelegram(fmtTGPaySuccess(saved)).catch(()=>{});
-        clearPaymentPendingReminder(String(orderId));
-        saved = upsertOrder({ ...saved, tgPaySuccessNotified:true }) || saved;
+        const r = await sendTelegram(fmtTGPaySuccess(saved));
+        if(r && r.ok){
+          clearPaymentPendingReminder(String(orderId));
+          saved = upsertOrder({ ...saved, tgPaySuccessNotified:true }) || saved;
+        }else{ try{ console.log('telegram_send_failed_pay_success', r && r.data); }catch{} }
       }else if(mapped==='FAILED' && !saved.tgPayFailedNotified){
-        sendTelegram(fmtTGPayFailed(saved)).catch(()=>{});
-        clearPaymentPendingReminder(String(orderId));
-        saved = upsertOrder({ ...saved, tgPayFailedNotified:true }) || saved;
+        const r = await sendTelegram(fmtTGPayFailed(saved));
+        if(r && r.ok){
+          clearPaymentPendingReminder(String(orderId));
+          saved = upsertOrder({ ...saved, tgPayFailedNotified:true }) || saved;
+        }else{ try{ console.log('telegram_send_failed_pay_failed', r && r.data); }catch{} }
       }else if(mapped==='PENDING'){
         schedulePaymentPendingReminder(String(orderId));
         if(!saved.tgPendingPayNotified){
-          sendTelegram(fmtTGPendingPayment(saved)).catch(()=>{});
-          saved = upsertOrder({ ...saved, tgPendingPayNotified:true }) || saved;
+          const r = await sendTelegram(fmtTGPendingPayment(saved));
+          if(r && r.ok){ saved = upsertOrder({ ...saved, tgPendingPayNotified:true }) || saved; }
+          else{ try{ console.log('telegram_send_failed_pending', r && r.data); }catch{} }
         }
       }
     }catch{}
@@ -757,12 +779,10 @@ app.post('/api/payment-callback', (req,res)=>{
           if(shouldNotify){
             const text = formatOrderWhatsApp(updated);
             sendWhatsApp(text).catch(()=>{});
-            sendTelegram(fmtTGPaySuccess(updated)).catch(()=>{});
-            updated = { ...updated, notified:true, tgPaySuccessNotified:true };
+            sendTelegram(fmtTGPaySuccess(updated)).then(r=>{ if(r && r.ok){ updated = { ...updated, notified:true, tgPaySuccessNotified:true }; } else { try{ console.log('telegram_send_failed_pay_success', r && r.data); }catch{} } }).catch(()=>{ try{ console.log('telegram_send_error_pay_success'); }catch{} });
           }
           if(mapped==='FAILED' && !existing.tgPayFailedNotified){
-            sendTelegram(fmtTGPayFailed(updated)).catch(()=>{});
-            updated = { ...updated, tgPayFailedNotified:true };
+            sendTelegram(fmtTGPayFailed(updated)).then(r=>{ if(r && r.ok){ updated = { ...updated, tgPayFailedNotified:true }; } else { try{ console.log('telegram_send_failed_pay_failed', r && r.data); }catch{} } }).catch(()=>{ try{ console.log('telegram_send_error_pay_failed'); }catch{} });
           }
           if(mapped==='PAID' || mapped==='FAILED'){ clearPaymentPendingReminder(String(orderId)); }
           upsertOrder(updated);
@@ -778,12 +798,10 @@ app.post('/api/payment-callback', (req,res)=>{
           if(shouldNotify){
             const text = formatOrderWhatsApp(updated);
             sendWhatsApp(text).catch(()=>{});
-            sendTelegram(fmtTGPaySuccess(updated)).catch(()=>{});
-            updated = { ...updated, notified:true, tgPaySuccessNotified:true };
+            sendTelegram(fmtTGPaySuccess(updated)).then(r=>{ if(r && r.ok){ updated = { ...updated, notified:true, tgPaySuccessNotified:true }; } else { try{ console.log('telegram_send_failed_pay_success', r && r.data); }catch{} } }).catch(()=>{ try{ console.log('telegram_send_error_pay_success'); }catch{} });
           }
           if(mapped==='FAILED' && !existing.tgPayFailedNotified){
-            sendTelegram(fmtTGPayFailed(updated)).catch(()=>{});
-            updated = { ...updated, tgPayFailedNotified:true };
+            sendTelegram(fmtTGPayFailed(updated)).then(r=>{ if(r && r.ok){ updated = { ...updated, tgPayFailedNotified:true }; } else { try{ console.log('telegram_send_failed_pay_failed', r && r.data); }catch{} } }).catch(()=>{ try{ console.log('telegram_send_error_pay_failed'); }catch{} });
           }
           if(mapped==='PAID' || mapped==='FAILED'){ clearPaymentPendingReminder(String(merchantTransactionId)); }
           upsertOrder(updated);
@@ -800,12 +818,10 @@ app.post('/api/payment-callback', (req,res)=>{
         if(shouldNotify){
           const text = formatOrderWhatsApp(updated);
           sendWhatsApp(text).catch(()=>{});
-          sendTelegram(fmtTGPaySuccess(updated)).catch(()=>{});
-          updated = { ...updated, notified:true, tgPaySuccessNotified:true };
+          sendTelegram(fmtTGPaySuccess(updated)).then(r=>{ if(r && r.ok){ updated = { ...updated, notified:true, tgPaySuccessNotified:true }; } else { try{ console.log('telegram_send_failed_pay_success', r && r.data); }catch{} } }).catch(()=>{ try{ console.log('telegram_send_error_pay_success'); }catch{} });
         }
         if(mapped==='FAILED' && !existing.tgPayFailedNotified){
-          sendTelegram(fmtTGPayFailed(updated)).catch(()=>{});
-          updated = { ...updated, tgPayFailedNotified:true };
+          sendTelegram(fmtTGPayFailed(updated)).then(r=>{ if(r && r.ok){ updated = { ...updated, tgPayFailedNotified:true }; } else { try{ console.log('telegram_send_failed_pay_failed', r && r.data); }catch{} } }).catch(()=>{ try{ console.log('telegram_send_error_pay_failed'); }catch{} });
         }
         if(mapped==='PAID' || mapped==='FAILED'){ clearPaymentPendingReminder(String(merchantTransactionId)); }
         upsertOrder(updated);
@@ -840,12 +856,10 @@ app.post('/api/phonepe/webhook', (req,res)=>{
           if(shouldNotify){
             const text = formatOrderWhatsApp(updated);
             sendWhatsApp(text).catch(()=>{});
-            sendTelegram(fmtTGPaySuccess(updated)).catch(()=>{});
-            updated = { ...updated, notified:true, tgPaySuccessNotified:true };
+            sendTelegram(fmtTGPaySuccess(updated)).then(r=>{ if(r && r.ok){ updated = { ...updated, notified:true, tgPaySuccessNotified:true }; } else { try{ console.log('telegram_send_failed_pay_success', r && r.data); }catch{} } }).catch(()=>{ try{ console.log('telegram_send_error_pay_success'); }catch{} });
           }
           if(mapped==='FAILED' && !existing.tgPayFailedNotified){
-            sendTelegram(fmtTGPayFailed(updated)).catch(()=>{});
-            updated = { ...updated, tgPayFailedNotified:true };
+            sendTelegram(fmtTGPayFailed(updated)).then(r=>{ if(r && r.ok){ updated = { ...updated, tgPayFailedNotified:true }; } else { try{ console.log('telegram_send_failed_pay_failed', r && r.data); }catch{} } }).catch(()=>{ try{ console.log('telegram_send_error_pay_failed'); }catch{} });
           }
           if(mapped==='PAID' || mapped==='FAILED'){ clearPaymentPendingReminder(String(orderId)); }
           upsertOrder(updated);
@@ -947,9 +961,7 @@ function startReconcile(orderId, expireAfter){
       if(st==='PENDING'){
         const ord = findOrderById(orderId) || { id: orderId };
         if(!ord.tgPendingPayNotified){
-          sendTelegram(fmtTGPendingPayment(ord)).catch(()=>{});
-          const updated = { ...ord, tgPendingPayNotified:true };
-          upsertOrder(updated);
+          sendTelegram(fmtTGPendingPayment(ord)).then(r=>{ if(r && r.ok){ const updated = { ...ord, tgPendingPayNotified:true }; upsertOrder(updated); } else { try{ console.log('telegram_send_failed_pending', r && r.data); }catch{} } }).catch(()=>{ try{ console.log('telegram_send_error_pending'); }catch{} });
         }
       }
     }catch{}
@@ -968,7 +980,7 @@ app.post('/api/admin/order-delivered', requireAdmin, (req,res)=>{
     const idx = orders.findIndex(o=>String(o.id)===String(id));
     if(idx<0) return res.status(404).json({error:'order-not-found'});
     orders[idx] = { ...orders[idx], status:'DELIVERED', deliveredAt: Date.now() };
-    try{ sendTelegram(fmtTGStatusChange(orders[idx],'DELIVERED')).catch(()=>{}); }catch{}
+    try{ sendTelegram(fmtTGStatusChange(orders[idx],'DELIVERED')).then(r=>{ if(!r || !r.ok){ try{ console.log('telegram_send_failed_status_delivered', r && r.data); }catch{} } }).catch(()=>{ try{ console.log('telegram_send_error_status_delivered'); }catch{} }); }catch{}
     const payload = `data: ${JSON.stringify({type:'order.updated', order:orders[idx]})}\n\n`;
     orderClients.forEach((res)=>{ try{ res.write(payload); }catch{} });
     return res.json({ok:true, order:orders[idx]});
@@ -983,7 +995,7 @@ app.post('/api/admin/order-accept', requireAdmin, (req,res)=>{
     const idx = orders.findIndex(o=>String(o.id)===String(id));
     if(idx<0) return res.status(404).json({error:'order-not-found'});
     orders[idx] = { ...orders[idx], status:'ACCEPTED', acceptedAt: Date.now() };
-    try{ sendTelegram(fmtTGStatusChange(orders[idx],'ACCEPTED')).catch(()=>{}); }catch{}
+    try{ sendTelegram(fmtTGStatusChange(orders[idx],'ACCEPTED')).then(r=>{ if(!r || !r.ok){ try{ console.log('telegram_send_failed_status_accepted', r && r.data); }catch{} } }).catch(()=>{ try{ console.log('telegram_send_error_status_accepted'); }catch{} }); }catch{}
     const payload = `data: ${JSON.stringify({type:'order.updated', order:orders[idx]})}\n\n`;
     orderClients.forEach((res)=>{ try{ res.write(payload); }catch{} });
     return res.json({ok:true, order:orders[idx]});
@@ -1056,9 +1068,7 @@ function scheduleOrderReminder(orderId, delayMs){
         const cur = findOrderById(id) || {};
         const st = String(cur.status||'');
         if(!cur.tgOrderReminderSent && st!=='ACCEPTED' && st!=='DELIVERED' && st!=='CANCELLED'){
-          sendTelegram(fmtTGPendingOrder(cur)).catch(()=>{});
-          const updated = { ...cur, tgOrderReminderSent:true };
-          upsertOrder(updated);
+          sendTelegram(fmtTGPendingOrder(cur)).then(r=>{ if(r && r.ok){ const updated = { ...cur, tgOrderReminderSent:true }; upsertOrder(updated); } else { try{ console.log('telegram_send_failed_order_reminder', r && r.data); }catch{} } }).catch(()=>{ try{ console.log('telegram_send_error_order_reminder'); }catch{} });
         }
       }catch{}
       tgOrderReminderTimers.delete(id);
@@ -1079,9 +1089,7 @@ function schedulePaymentPendingReminder(orderId, delayMs){
       try{
         const ord = findOrderById(id) || { id };
         if(!ord.tgPendingPayNotified){
-          sendTelegram(fmtTGPendingPayment(ord)).catch(()=>{});
-          const updated = { ...ord, tgPendingPayNotified:true };
-          upsertOrder(updated);
+          sendTelegram(fmtTGPendingPayment(ord)).then(r=>{ if(r && r.ok){ const updated = { ...ord, tgPendingPayNotified:true }; upsertOrder(updated); } else { try{ console.log('telegram_send_failed_pending', r && r.data); }catch{} } }).catch(()=>{ try{ console.log('telegram_send_error_pending'); }catch{} });
         }
       }catch{}
       tgPayPendingTimers.delete(id);
