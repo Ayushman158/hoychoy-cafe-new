@@ -256,28 +256,11 @@ function fmtTGNewOrder(o){
     const name = (o.customer&&o.customer.name)||'';
     const amt = Number(o.total||0);
     const st = String(o.status||'INITIATED');
-    const items = Array.isArray(o.items)?o.items:[];
-    const names = items.map(it=>`${(it.item&&it.item.name)||''} ×${Number(it.qty||0)}`).filter(Boolean);
-    const preview = names.slice(0,4).join(', ');
-    const more = names.length>4 ? `, +${names.length-4} more` : '';
-    const cust = o.customer||{};
-    const ph = String(cust.phone||'').trim();
-    const addr = String(cust.address||'').trim();
-    let map = '';
-    try{
-      const g=cust.geo;
-      if(g && g.lat!=null && g.lng!=null){ map = `https://maps.google.com/?q=${Number(g.lat)},${Number(g.lng)}`; }
-      else if(cust.manualLink){ map = String(cust.manualLink); }
-    }catch{}
     const lines = [];
     lines.push(`🆕 New Order`);
     if(name) lines.push(`Name: ${name}`);
     lines.push(`ID: ${o.id}`);
     lines.push(`Amount: ₹${amt}`);
-    if(preview) lines.push(preview + more);
-    if(ph) lines.push(`📞 ${ph}`);
-    if(addr) lines.push(`🏠 ${addr}`);
-    if(map) lines.push(`📍 ${map}`);
     lines.push(`Method: PhonePe`);
     lines.push(`Payment: ${st}`);
     return lines.join('\n');
