@@ -100,16 +100,23 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
 
   function calculateDeliveryFee(){
     if(total===0) return 0;
-    if(distance==null) return 50;
-    return distance>5 ? 80 : 50;
+    if(distance==null) return 60;
+    const d = Number(distance);
+    if(d<=5) return 60;
+    if(d<=8) return 80;
+    if(d<=10) return 120;
+    if(d<=12) return 150;
+    if(d<=15) return 180;
+    return null;
   }
 
   const discountedSubtotal = Math.max(0, Math.round(total * (1 - discountPct/100)));
   const gst = Math.round(discountedSubtotal*0.05);
   const deliveryFee = calculateDeliveryFee();
-  const grandTotal = discountedSubtotal + gst + deliveryFee;
-  const minCheckTotal = total + deliveryFee; // Minimum order check uses item subtotal + delivery (not GST, not discounts)
-  const canOrder = minCheckTotal >= 200;
+  const deliveryAvailable = deliveryFee!=null;
+  const grandTotal = discountedSubtotal + gst + (deliveryAvailable?deliveryFee:0);
+  const minCheckTotal = deliveryAvailable ? total + deliveryFee : 0;
+  const canOrder = deliveryAvailable && minCheckTotal >= 200;
 
   function submit(){onSubmit({name,phone,address,note,geo,manualLink:manualLink.trim(),total,items,gst,deliveryFee,grandTotal, coupon: coupon?.code||null, discountPct});}
 
@@ -293,7 +300,8 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
           <input type="checkbox" className="w-4 h-4" checked={agree} onChange={e=>setAgree(e.target.checked)} />
           <span>I agree to the <a href="/terms" className="text-[#f5c84a] underline">Terms & Conditions</a></span>
         </label>
-        {!canOrder && <div className="text-error text-xs mb-2">Minimum order is ₹200 including delivery</div>}
+        {!deliveryAvailable && <div className="text-error text-xs mb-2">Delivery not available beyond 15 km</div>}
+        {!canOrder && deliveryAvailable && <div className="text-error text-xs mb-2">Minimum order is ₹200 including delivery</div>}
         {!valid && <div className="text-error text-xs mb-2">Please fill in required details to pay</div>}
         <button className={`btn btn-primary w-full ${(!valid||paying)?'btn-disabled':''}`} onClick={payNow} disabled={!valid || paying}>{paying?'Starting…':`Pay ₹${grandTotal}`}</button>
         <div className="text-muted text-xs mt-2">You will be redirected to PhonePe to complete payment.</div>
