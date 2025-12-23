@@ -137,6 +137,10 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
 
   async function payNow(){
     if(paying) return;
+    if(!deliveryAvailable){
+      alert('Delivery not available beyond 15 km.');
+      return;
+    }
     if(!canOrder){
       alert('Minimum order is ₹200. Please add more items before paying.');
       return;
@@ -303,7 +307,7 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
         {!deliveryAvailable && <div className="text-error text-xs mb-2">Delivery not available beyond 15 km</div>}
         {!canOrder && deliveryAvailable && <div className="text-error text-xs mb-2">Minimum order is ₹200 including delivery</div>}
         {!valid && <div className="text-error text-xs mb-2">Please fill in required details to pay</div>}
-        <button className={`btn btn-primary w-full ${(!valid||paying)?'btn-disabled':''}`} onClick={payNow} disabled={!valid || paying}>{paying?'Starting…':`Pay ₹${grandTotal}`}</button>
+        <button className={`btn btn-primary w-full ${(!valid||paying||!deliveryAvailable)?'btn-disabled':''}`} onClick={payNow} disabled={!valid || paying || !deliveryAvailable}>{paying?'Starting…':`Pay ₹${grandTotal}`}</button>
         <div className="text-muted text-xs mt-2">You will be redirected to PhonePe to complete payment.</div>
       </div>
       <div className="mt-4 mb-6">
