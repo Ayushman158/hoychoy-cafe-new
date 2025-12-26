@@ -3,27 +3,23 @@ import { getMenu } from "../utils/menu.js";
 import { BACKEND_URL } from "../config.js";
 
 const BEST_SELLER_IDS = [
-  "octopus",
-  "chicken_meifoon",
-  "grilled_teriyaki_chicken",
-  "penne_alfredo_veg",
-  "pesto_pasta_veg",
-  "green_mafia",
-  "red_velvet_chicken",
+  "octopus_chilli",
+  "meifoon_chicken",
   "grilled_fish_lemon_butter",
-  "thukpa_chicken"
+  "grilled_teriyaki_chicken",
+  "pesto_pasta_veg",
+  "penne_alfredo_veg",
+  "the_mafias_meal"
 ];
 
 const IMAGE_MAP = {
-  octopus: "https://iili.io/fzFX0ge.jpg",
-  chicken_meifoon: "https://iili.io/fzFVbFn.jpg",
-  grilled_teriyaki_chicken: "https://iili.io/fzFhiwx.jpg",
-  penne_alfredo_veg: "https://iili.io/fzFGgiF.jpg",
-  pesto_pasta_veg: "https://iili.io/fzCIdQa.jpg",
-  green_mafia: "https://iili.io/fzCulLu.jpg",
-  red_velvet_chicken: "https://iili.io/fzCuypS.jpg",
+  octopus_chilli: "https://iili.io/fzFX0ge.jpg",
+  meifoon_chicken: "https://iili.io/fzFVbFn.jpg",
   grilled_fish_lemon_butter: "https://iili.io/fzCR9cv.jpg",
-  thukpa_chicken: "https://iili.io/fzCRDe2.jpg"
+  grilled_teriyaki_chicken: "https://iili.io/fzFhiwx.jpg",
+  pesto_pasta_veg: "https://iili.io/fzCIdQa.jpg",
+  penne_alfredo_veg: "https://iili.io/fzFGgiF.jpg",
+  the_mafias_meal: "https://iili.io/fzCulLu.jpg"
 };
 
 function img(id){
@@ -114,9 +110,9 @@ const NonVegIcon = () => (
     return (base.items||[]).filter(i=>{
       if (!q && BEST_SELLER_IDS.includes(i.id)) return false;
       const okF= !filters.length || ((filters.includes('veg')&&i.veg) || (filters.includes('nonveg')&&!i.veg));
-      const okC= !cat || i.category===cat || (
+      const okC = q ? true : (!cat || i.category===cat || (
         cat==="Appetizers" && (i.category==="Appetizers (Veg)"||i.category==="Appetizers (Non-Veg)")
-      );
+      ));
       const okQ = matchesQuery(i, q);
       return okF&&okC&&okQ;
     });
@@ -228,15 +224,17 @@ const NonVegIcon = () => (
               );
             })}
           </div>
-          <div className="flex gap-2 overflow-auto mt-3 pb-2">
-            {categories.map(c=> (
-              <button key={c} onClick={()=>setCat(cat===c?null:c)} className={`chip ${cat===c?'chip-active':''}`}>
-                <span className="inline-flex items-center gap-2">
-                  <span>{c}</span>
-                  {cat===c && <span>×</span>}
-                </span>
-              </button>
-            ))}
+          <div className="mt-3">
+            <select
+              className="w-full bg-[#111] border border-[#222] rounded-xl p-2"
+              value={cat||''}
+              onChange={e=>{ const v=e.target.value; setCat(v||null); }}
+            >
+              <option value="">All Categories</option>
+              {categories.map(c=> (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
           </div>
         </div>
         {!query.trim() && (
