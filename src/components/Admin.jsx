@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getMenu, makeIdFromName, fetchBackendOverridesAndCache } from "../utils/menu.js";
 import { BACKEND_URL, OWNER_PHONE } from "../config.js";
 
