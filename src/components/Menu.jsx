@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useLayoutEffect } from "react";
+import { useEffect, useMemo, useState, useLayoutEffect, useRef } from "react";
 import { getMenu } from "../utils/menu.js";
 import { BACKEND_URL } from "../config.js";
 
@@ -43,7 +43,7 @@ export default function Menu({cart, setCart, onProceed}){
   const [statusLoading,setStatusLoading]=useState(true);
   const DEFAULT_CLOSING_MSG = '😔 Sorry, our restaurant is closed today. Online orders are available 12:00–9:00 PM.';
   const [closingMsg,setClosingMsg]=useState("");
-  const headerRef = React.useRef(null);
+  const headerRef = useRef(null);
   const [headerH,setHeaderH] = useState(0);
   useLayoutEffect(()=>{
     const update=()=>{ if(headerRef.current){ setHeaderH(headerRef.current.offsetHeight||0); } };
