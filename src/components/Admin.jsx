@@ -114,6 +114,14 @@ export default function Admin(){
 
   useEffect(()=>{
     if(!authed || !token) return;
+    const id = setInterval(()=>{
+      authedFetch(`${BACKEND_URL}/api/admin/me`,{}).then(r=>r.json()).then(d=>setAuthed(!!d.authed)).catch(()=>{});
+    }, 15*60*1000);
+    return ()=>{ try{ clearInterval(id); }catch{} };
+  },[authed, token]);
+
+  useEffect(()=>{
+    if(!authed || !token) return;
     let es=null; let t=null;
     function open(){
       try{

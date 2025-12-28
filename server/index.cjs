@@ -38,9 +38,12 @@ const TELEGRAM_ADMIN_CHAT_ID = process.env.TELEGRAM_ADMIN_CHAT_ID || '';
 
 const DATA_DIR = process.env.DATA_DIR || '/var/data';
 const OV_PATH = path.join(DATA_DIR, 'overrides.json');
+const SESS_PATH = path.join(DATA_DIR, 'sessions.json');
 function ensureDir(){try{fs.mkdirSync(DATA_DIR,{recursive:true});}catch{}}
 function loadOverridesFS(){ try{ ensureDir(); const s=fs.readFileSync(OV_PATH,'utf-8'); return JSON.parse(s||'{}'); }catch{ return {}; } }
 function saveOverridesFS(obj){ try{ ensureDir(); fs.writeFileSync(OV_PATH, JSON.stringify(obj,null,2)); }catch{} }
+function loadSessionsFS(){ try{ ensureDir(); const s=fs.readFileSync(SESS_PATH,'utf-8'); return JSON.parse(s||'{}'); }catch{ return {}; } }
+function saveSessionsFS(map){ try{ ensureDir(); const obj={}; map.forEach((val,key)=>{ obj[key]=val; }); fs.writeFileSync(SESS_PATH, JSON.stringify(obj,null,2)); }catch{} }
 const UP_URL = process.env.UPSTASH_REDIS_REST_URL || '';
 const UP_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || '';
 async function upGet(key){
@@ -61,9 +64,10 @@ let overrides = loadOverridesFS();
 async function refreshOverridesFromStore(){ const v = await upGet('hc:overrides'); if(v && typeof v==='object'){ overrides = v; saveOverridesFS(overrides); } }
 function saveOverrides(obj){ overrides = obj; saveOverridesFS(obj); upSet('hc:overrides', obj); }
 const sessions = new Map();
+try{ const obj = loadSessionsFS(); if(obj && typeof obj==='object'){ const m=new Map(Object.entries(obj)); sessions.clear(); m.forEach((val,key)=>sessions.set(key,val)); } }catch{}
 const ADMIN_TOKEN_TTL_HOURS = Number(process.env.ADMIN_TOKEN_TTL_HOURS||24);
-async function refreshSessionsFromStore(){ try{ const v = await upGet('hc:sessions'); if(v && typeof v==='object'){ const m=new Map(Object.entries(v)); sessions.clear(); m.forEach((val,key)=>sessions.set(key,val)); } }catch{} }
-function persistSessions(){ try{ const obj={}; sessions.forEach((val,key)=>{ obj[key]=val; }); upSet('hc:sessions', obj); }catch{} }
+async function refreshSessionsFromStore(){ try{ const v = await upGet('hc:sessions'); if(v && typeof v==='object'){ const m=new Map(Object.entries(v)); sessions.clear(); m.forEach((val,key)=>sessions.set(key,val)); return; } const fsObj = loadSessionsFS(); if(fsObj && typeof fsObj==='object'){ const m=new Map(Object.entries(fsObj)); sessions.clear(); m.forEach((val,key)=>sessions.set(key,val)); } }catch{} }
+function persistSessions(){ try{ saveSessionsFS(sessions); const obj={}; sessions.forEach((val,key)=>{ obj[key]=val; }); upSet('hc:sessions', obj); }catch{} }
 function createSession(ttlHours){ const t=crypto.randomBytes(24).toString('hex'); const hours = Number(ttlHours||ADMIN_TOKEN_TTL_HOURS)||ADMIN_TOKEN_TTL_HOURS; const exp=Date.now()+hours*60*60*1000; sessions.set(t,{exp, ttlHours:hours}); persistSessions(); return t; }
 function isValidSession(t){ const s=sessions.get(t); if(!s) return false; if(Date.now()>s.exp){ sessions.delete(t); persistSessions(); return false; } return true; }
 
