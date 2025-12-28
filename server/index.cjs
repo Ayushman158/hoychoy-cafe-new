@@ -569,6 +569,15 @@ app.post('/api/admin/set-availability', requireAdmin, (req,res)=>{
   res.json({ok:true});
 });
 
+app.post('/api/admin/set-availability-bulk', requireAdmin, (req,res)=>{
+  const { ids, available } = req.body || {};
+  if(!Array.isArray(ids) || ids.length===0) return res.status(400).json({error:'ids required'});
+  overrides.availability = overrides.availability||{};
+  ids.forEach((id)=>{ if(id){ overrides.availability[id] = !!available; } });
+  saveOverrides(overrides);
+  res.json({ok:true, updated:ids.length});
+});
+
 app.get('/api/admin/coupons', requireAdmin, (req,res)=>{
   try{
     overrides.coupons = overrides.coupons || {};
