@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useLayoutEffect, useRef } from "react";
+import React, { useEffect, useMemo, useState, useLayoutEffect, useRef } from "react";
 import { getMenu } from "../utils/menu.js";
 import { BACKEND_URL } from "../config.js";
 
