@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { getMenu, makeIdFromName, fetchBackendOverridesAndCache } from "../utils/menu.js";
+import { getMenu, makeIdFromName } from "../utils/menu.js";
 import { BACKEND_URL, OWNER_PHONE } from "../config.js";
 
 export default function Admin(){
@@ -652,66 +652,3 @@ export default function Admin(){
     </section>
   );
 }
-  const [bulkSelected,setBulkSelected]=useState({});
-  const [bulkCat,setBulkCat]=useState('');
-  const [bulkQuery2,setBulkQuery2]=useState('');
-  const filteredBulkItems = useMemo(()=>{
-    try{
-      return (items||[]).filter(it=>{
-        const catOk = !bulkCat || String(it.category||'')===String(bulkCat);
-        const qOk = (it.name||'').toLowerCase().includes(String(bulkQuery2||'').toLowerCase());
-        return catOk && qOk;
-      });
-    }catch{return items||[]}
-  },[items,bulkCat,bulkQuery2]);
-  function toggleBulkSel(id, checked){ setBulkSelected(s=>({ ...s, [id]: !!checked })); }
-  function clearBulkSel(){ setBulkSelected({}); }
-  async function applyBulkAvailability(value){
-    setMsg('');
-    const ids = Object.keys(bulkSelected).filter(id=>bulkSelected[id]);
-    if(ids.length===0){ setMsg('No items selected'); return; }
-    try{
-      const r=await authedFetch(`${BACKEND_URL}/api/admin/set-availability-bulk`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids,available:value})});
-      const d=await r.json();
-      if(!r.ok || !d.ok){ setMsg('Failed to update availability'); return; }
-      await fetchBackendOverridesAndCache();
-      setItems(getMenu().items||[]);
-      setMsg(`Updated ${ids.length} item(s)`);
-      clearBulkSel();
-    }catch{ setMsg('Network error'); }
-  }
-      <div className="card mt-3">
-        <div className="section-title">Bulk Edit Availability</div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-1">
-          <select className="bg-[#111] border border-[#222] rounded-xl p-2" value={bulkCat} onChange={e=>setBulkCat(e.target.value)}>
-            <option value="">All Categories</option>
-            {categories.map(c=> (<option key={c} value={c}>{c}</option>))}
-          </select>
-          <input className="bg-[#111] border border-[#222] rounded-xl p-2" placeholder="Search items" value={bulkQuery2} onChange={e=>setBulkQuery2(e.target.value)} />
-          <div className="flex gap-2">
-            <button className="btn" type="button" onClick={()=>{
-              const allIds = filteredBulkItems.map(i=>i.id);
-              const next={}; allIds.forEach(id=>{ next[id]=true; });
-              setBulkSelected(next);
-            }}>Select All</button>
-            <button className="btn" type="button" onClick={clearBulkSel}>Clear</button>
-          </div>
-        </div>
-        <ul className="flex flex-col gap-2 max-h-[300px] overflow-auto mt-2">
-          {filteredBulkItems.map(it=> (
-            <li key={it.id} className="row">
-              <label className="flex items-center gap-2 min-w-0">
-                <input type="checkbox" checked={!!bulkSelected[it.id]} onChange={e=>toggleBulkSel(it.id, e.target.checked)} />
-                <span className="min-w-0 truncate">{it.name}</span>
-              </label>
-              <span className="flex items-center gap-2">
-                <span className={`inline-block w-2 h-2 rounded-full ${it.available?'bg-success':'bg-error'}`}></span>
-              </span>
-            </li>
-          ))}
-        </ul>
-        <div className="flex gap-2 mt-2">
-          <button className="btn btn-primary" type="button" onClick={()=>applyBulkAvailability(true)}>Mark Available</button>
-          <button className="btn" type="button" onClick={()=>applyBulkAvailability(false)}>Mark Out</button>
-        </div>
-      </div>
