@@ -32,7 +32,7 @@ const ADMIN_WHATSAPP_PHONE = process.env.ADMIN_WHATSAPP_PHONE || '';
 const WA_PHONE_NUMBER_ID = process.env.WA_PHONE_NUMBER_ID || '';
 const WA_ACCESS_TOKEN = process.env.WA_ACCESS_TOKEN || '';
 const MIN_ORDER_RUPEES = Number(process.env.MIN_ORDER_RUPEES||200);
-const ADMIN_REMEMBER_TTL_DAYS = Number(process.env.ADMIN_REMEMBER_TTL_DAYS||30);
+const ADMIN_REMEMBER_TTL_DAYS = Number(process.env.ADMIN_REMEMBER_TTL_DAYS||365);
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const TELEGRAM_ADMIN_CHAT_ID = process.env.TELEGRAM_ADMIN_CHAT_ID || '';
 

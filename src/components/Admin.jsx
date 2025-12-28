@@ -114,9 +114,11 @@ export default function Admin(){
 
   useEffect(()=>{
     if(!authed || !token) return;
-    const id = setInterval(()=>{
+    const ping = ()=>{
       authedFetch(`${BACKEND_URL}/api/admin/me`,{}).then(r=>r.json()).then(d=>setAuthed(!!d.authed)).catch(()=>{});
-    }, 15*60*1000);
+    };
+    ping();
+    const id = setInterval(ping, 10*60*1000);
     return ()=>{ try{ clearInterval(id); }catch{} };
   },[authed, token]);
 
