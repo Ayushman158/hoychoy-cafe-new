@@ -66,7 +66,19 @@ function saveOverrides(obj){ overrides = obj; saveOverridesFS(obj); upSet('hc:ov
 const sessions = new Map();
 try{ const obj = loadSessionsFS(); if(obj && typeof obj==='object'){ const m=new Map(Object.entries(obj)); sessions.clear(); m.forEach((val,key)=>sessions.set(key,val)); } }catch{}
 const ADMIN_TOKEN_TTL_HOURS = Number(process.env.ADMIN_TOKEN_TTL_HOURS||24);
-async function refreshSessionsFromStore(){ try{ const v = await upGet('hc:sessions'); if(v && typeof v==='object'){ const m=new Map(Object.entries(v)); sessions.clear(); m.forEach((val,key)=>sessions.set(key,val)); return; } const fsObj = loadSessionsFS(); if(fsObj && typeof fsObj==='object'){ const m=new Map(Object.entries(fsObj)); sessions.clear(); m.forEach((val,key)=>sessions.set(key,val)); } }catch{} }
+async function refreshSessionsFromStore(){
+  try{
+    const v = await upGet('hc:sessions');
+    const src = (v && typeof v==='object') ? v : loadSessionsFS();
+    if(src && typeof src==='object'){
+      Object.entries(src).forEach(([key,val])=>{
+        const cur = sessions.get(key);
+        if(!cur || (val && val.exp>cur.exp)) sessions.set(key,val);
+      });
+      persistSessions();
+    }
+  }catch{}
+}
 function persistSessions(){ try{ saveSessionsFS(sessions); const obj={}; sessions.forEach((val,key)=>{ obj[key]=val; }); upSet('hc:sessions', obj); }catch{} }
 function createSession(ttlHours){ const t=crypto.randomBytes(24).toString('hex'); const hours = Number(ttlHours||ADMIN_TOKEN_TTL_HOURS)||ADMIN_TOKEN_TTL_HOURS; const exp=Date.now()+hours*60*60*1000; sessions.set(t,{exp, ttlHours:hours}); persistSessions(); return t; }
 function isValidSession(t){ const s=sessions.get(t); if(!s) return false; if(Date.now()>s.exp){ sessions.delete(t); persistSessions(); return false; } return true; }
@@ -521,6 +533,7 @@ app.get('/api/admin/orders/stream', (req,res)=>{
   const tokHdr = hdr.startsWith('Bearer ') ? hdr.slice(7) : hdr;
   const tok = req.query.token || tokHdr || '';
   if(!isValidSession(tok)) return res.status(401).end();
+  try{ const s=sessions.get(tok); if(s){ const hours = s.ttlHours||ADMIN_TOKEN_TTL_HOURS; s.exp=Date.now()+hours*60*60*1000; persistSessions(); } }catch{}
   res.setHeader('Content-Type','text/event-stream');
   res.setHeader('Cache-Control','no-cache');
   res.setHeader('Connection','keep-alive');
