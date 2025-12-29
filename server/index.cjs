@@ -559,7 +559,15 @@ app.get('/api/admin/orders/stream', (req,res)=>{
   const init = {type:'init', orders:orders.slice().sort((a,b)=>b.createdAt-a.createdAt)};
   res.write(`data: ${JSON.stringify(init)}\n\n`);
   orderClients.add(res);
-  req.on('close', ()=>{ orderClients.delete(res); });
+  const HEARTBEAT_MS = 5*60*1000;
+  const heartbeat = setInterval(()=>{
+    try{
+      res.write(`: ping\n\n`);
+      const s = sessions.get(tok);
+      if(s){ const hours = s.ttlHours||ADMIN_TOKEN_TTL_HOURS; s.exp = Date.now()+hours*60*60*1000; persistSessions(); }
+    }catch{}
+  }, HEARTBEAT_MS);
+  req.on('close', ()=>{ try{ clearInterval(heartbeat); }catch{} orderClients.delete(res); });
 });
 
 app.post('/api/admin/set-app-open', requireAdmin, (req,res)=>{
