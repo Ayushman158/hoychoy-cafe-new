@@ -86,20 +86,11 @@ function createSession(ttlHours){
   const hours = Number(ttlHours||ADMIN_TOKEN_TTL_HOURS)||ADMIN_TOKEN_TTL_HOURS;
   const now = Date.now();
   const exp = now + hours*60*60*1000;
-  sessions.set(t,{exp, ttlHours:hours, createdAt: now});
-  try{
-    const list = Array.from(sessions.entries());
-    if(list.length > ADMIN_MAX_CONCURRENT_SESSIONS){
-      const score = (s)=>{ const h=s.ttlHours||ADMIN_TOKEN_TTL_HOURS; return (s.createdAt|| (s.exp - h*60*60*1000)); };
-      list.sort((a,b)=> score(a[1]) - score(b[1]));
-      const excess = list.length - ADMIN_MAX_CONCURRENT_SESSIONS;
-      for(let i=0;i<excess;i++){ sessions.delete(list[i][0]); }
-    }
-  }catch{}
+  sessions.set(t,{exp, ttlHours:hours, createdAt: now, lastActive: now});
   persistSessions();
   return t;
 }
-function isValidSession(t){ const s=sessions.get(t); if(!s) return false; if(Date.now()>s.exp){ sessions.delete(t); persistSessions(); return false; } return true; }
+function isValidSession(t){ const s=sessions.get(t); if(!s) return false; const now=Date.now(); if(now>s.exp){ sessions.delete(t); persistSessions(); return false; } s.lastActive = now; return true; }
 
 let tokenCache = { token: '', expiresAt: 0 };
 let sdkClient = null;
@@ -417,6 +408,13 @@ app.post('/api/admin/login', (req,res)=>{
   }
   if(email===ADMIN_EMAIL && password===ADMIN_PASSWORD){
     loginAttempts.delete(cid);
+    try{
+      const now=Date.now();
+      const activeCount = Array.from(sessions.values()).filter(s=>s && s.exp>now).length;
+      if(activeCount>=ADMIN_MAX_CONCURRENT_SESSIONS){
+        return res.status(429).json({error:'too_many_sessions', max:ADMIN_MAX_CONCURRENT_SESSIONS});
+      }
+    }catch{}
     const token=createSession(remember ? ADMIN_REMEMBER_TTL_DAYS*24 : ADMIN_TOKEN_TTL_HOURS);
     return res.json({ok:true, token});
   }
@@ -430,7 +428,7 @@ app.get('/api/admin/me', (req,res)=>{
   const hdr = req.headers['authorization']||'';
   const tok = hdr.startsWith('Bearer ') ? hdr.slice(7) : hdr;
   const ok = isValidSession(tok);
-  if(ok){ const s=sessions.get(tok); if(s){ const hours = s.ttlHours||ADMIN_TOKEN_TTL_HOURS; s.exp=Date.now()+hours*60*60*1000; persistSessions(); } }
+  if(ok){ const s=sessions.get(tok); if(s){ const hours = s.ttlHours||ADMIN_TOKEN_TTL_HOURS; const now=Date.now(); s.exp=now+hours*60*60*1000; s.lastActive=now; persistSessions(); } }
   return res.json({authed:ok});
 });
 
