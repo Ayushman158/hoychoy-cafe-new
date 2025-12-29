@@ -66,6 +66,7 @@ function saveOverrides(obj){ overrides = obj; saveOverridesFS(obj); upSet('hc:ov
 const sessions = new Map();
 try{ const obj = loadSessionsFS(); if(obj && typeof obj==='object'){ const m=new Map(Object.entries(obj)); sessions.clear(); m.forEach((val,key)=>sessions.set(key,val)); } }catch{}
 const ADMIN_TOKEN_TTL_HOURS = Number(process.env.ADMIN_TOKEN_TTL_HOURS||24);
+const ADMIN_MAX_CONCURRENT_SESSIONS = Number(process.env.ADMIN_MAX_CONCURRENT_SESSIONS||6);
 async function refreshSessionsFromStore(){
   try{
     const v = await upGet('hc:sessions');
@@ -80,7 +81,24 @@ async function refreshSessionsFromStore(){
   }catch{}
 }
 function persistSessions(){ try{ saveSessionsFS(sessions); const obj={}; sessions.forEach((val,key)=>{ obj[key]=val; }); upSet('hc:sessions', obj); }catch{} }
-function createSession(ttlHours){ const t=crypto.randomBytes(24).toString('hex'); const hours = Number(ttlHours||ADMIN_TOKEN_TTL_HOURS)||ADMIN_TOKEN_TTL_HOURS; const exp=Date.now()+hours*60*60*1000; sessions.set(t,{exp, ttlHours:hours}); persistSessions(); return t; }
+function createSession(ttlHours){
+  const t=crypto.randomBytes(24).toString('hex');
+  const hours = Number(ttlHours||ADMIN_TOKEN_TTL_HOURS)||ADMIN_TOKEN_TTL_HOURS;
+  const now = Date.now();
+  const exp = now + hours*60*60*1000;
+  sessions.set(t,{exp, ttlHours:hours, createdAt: now});
+  try{
+    const list = Array.from(sessions.entries());
+    if(list.length > ADMIN_MAX_CONCURRENT_SESSIONS){
+      const score = (s)=>{ const h=s.ttlHours||ADMIN_TOKEN_TTL_HOURS; return (s.createdAt|| (s.exp - h*60*60*1000)); };
+      list.sort((a,b)=> score(a[1]) - score(b[1]));
+      const excess = list.length - ADMIN_MAX_CONCURRENT_SESSIONS;
+      for(let i=0;i<excess;i++){ sessions.delete(list[i][0]); }
+    }
+  }catch{}
+  persistSessions();
+  return t;
+}
 function isValidSession(t){ const s=sessions.get(t); if(!s) return false; if(Date.now()>s.exp){ sessions.delete(t); persistSessions(); return false; } return true; }
 
 let tokenCache = { token: '', expiresAt: 0 };
