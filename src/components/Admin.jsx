@@ -119,6 +119,10 @@ export default function Admin(){
     };
     ping();
     const id = setInterval(ping, 10*60*1000);
+    const onFocus = ()=>{ try{ ping(); }catch{} };
+    const onVis = ()=>{ try{ if(document.visibilityState==='visible') ping(); }catch{} };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVis);
     return ()=>{ try{ clearInterval(id); }catch{} };
   },[authed, token]);
 
