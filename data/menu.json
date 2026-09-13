@@ -1,13 +1,2225 @@
 {
-  "categories": ["Appetizers", "Mains", "Sides", "Desserts"],
+  "categories": [
+    "Appetizers (Veg)",
+    "Appetizers (Non-Veg)",
+    "Pasta",
+    "Sizzler",
+    "Grilled",
+    "Chopsuey",
+    "Noodles",
+    "Fried Rice",
+    "Momo",
+    "Rolls",
+    "Soup",
+    "Thai",
+    "Asian & Sushi",
+    "Bao",
+    "Ethnic Thali",
+    "Biryani",
+    "Pulao",
+    "Rice",
+    "Roti",
+    "Indian (Veg)",
+    "Indian (Non-Veg)",
+    "Chinese (Veg)",
+    "Chinese (Non-Veg)",
+    "Sea Foods",
+    "Salad",
+    "Beverages",
+    "Ice Cream"
+  ],
   "items": [
-    {"id": "peri_fries", "name": "Peri Peri Fries", "price": 129, "veg": true, "category": "Appetizers", "available": true},
-    {"id": "french_fries", "name": "French Fries", "price": 99, "veg": true, "category": "Appetizers", "available": true},
-    {"id": "paneer_pakora", "name": "Paneer Pakora", "price": 169, "veg": true, "category": "Appetizers", "available": true},
-    {"id": "onion_rings", "name": "Onion Rings", "price": 149, "veg": true, "category": "Appetizers", "available": true},
-    {"id": "chicken_wings", "name": "Chicken Wings", "price": 179, "veg": false, "category": "Appetizers", "available": true},
-    {"id": "grilled_chicken", "name": "Grilled Chicken", "price": 249, "veg": false, "category": "Mains", "available": true},
-    {"id": "honey_chilli_potato", "name": "Honey Chilli Potato", "price": 179, "veg": true, "category": "Sides", "available": false},
-    {"id": "veg_manchurian", "name": "Veg Manchurian", "price": 179, "veg": true, "category": "Mains", "available": true}
+    {
+      "id": "fries_plain",
+      "name": "French Fries",
+      "price": 129,
+      "veg": true,
+      "category": "Appetizers (Veg)",
+      "available": true
+    },
+    {
+      "id": "fries_peri",
+      "name": "Peri Peri French Fries",
+      "price": 149,
+      "veg": true,
+      "category": "Appetizers (Veg)",
+      "available": true
+    },
+    {
+      "id": "loaded_fries_veg",
+      "name": "Loaded Fries (Veg)",
+      "price": 239,
+      "veg": true,
+      "category": "Appetizers (Veg)",
+      "available": true
+    },
+    {
+      "id": "loaded_fries_nonveg",
+      "name": "Loaded Fries (Non-Veg)",
+      "price": 289,
+      "veg": false,
+      "category": "Appetizers (Non-Veg)",
+      "available": true
+    },
+    {
+      "id": "fries_cheese",
+      "name": "French Fries with Cheese",
+      "price": 179,
+      "veg": true,
+      "category": "Appetizers (Veg)",
+      "available": true
+    },
+    {
+      "id": "jalapeno_cheese_bomb",
+      "name": "Jalapeno Cheese Bomb",
+      "price": 299,
+      "veg": true,
+      "category": "Appetizers (Veg)",
+      "available": true
+    },
+    {
+      "id": "crispy_lotus_stem",
+      "name": "Crispy Lotus Stem",
+      "price": 349,
+      "veg": true,
+      "category": "Appetizers (Veg)",
+      "available": true
+    },
+    {
+      "id": "korean_fried_cauliflower",
+      "name": "Korean Fried Cauliflower",
+      "price": 399,
+      "veg": true,
+      "category": "Appetizers (Veg)",
+      "available": true
+    },
+    {
+      "id": "honey_chilli_potato",
+      "name": "Honey Chilli Potato",
+      "price": 249,
+      "veg": true,
+      "category": "Appetizers (Veg)",
+      "available": true
+    },
+    {
+      "id": "mushroom_salt_pepper",
+      "name": "Mushroom Salt Pepper",
+      "price": 219,
+      "veg": true,
+      "category": "Appetizers (Veg)",
+      "available": true
+    },
+    {
+      "id": "mushrooms_garlic_sauce",
+      "name": "Mushrooms in Garlic Sauce",
+      "price": 399,
+      "veg": true,
+      "category": "Appetizers (Veg)",
+      "available": true
+    },
+    {
+      "id": "mushroom_manchurian",
+      "name": "Mushroom Manchurian",
+      "price": 299,
+      "veg": true,
+      "category": "Appetizers (Veg)",
+      "available": true
+    },
+    {
+      "id": "crispy_chilli_baby_corn",
+      "name": "Crispy Chilli Baby Corn",
+      "price": 279,
+      "veg": true,
+      "category": "Appetizers (Veg)",
+      "available": true
+    },
+    {
+      "id": "baby_corn_pepper_fry",
+      "name": "Baby Corn Pepper Fry",
+      "price": 279,
+      "veg": true,
+      "category": "Appetizers (Veg)",
+      "available": true
+    },
+    {
+      "id": "babycorn_manchurian",
+      "name": "Babycorn Manchurian",
+      "price": 299,
+      "veg": true,
+      "category": "Appetizers (Veg)",
+      "available": true
+    },
+    {
+      "id": "american_corn",
+      "name": "American Corn",
+      "price": 249,
+      "veg": true,
+      "category": "Appetizers (Veg)",
+      "available": true
+    },
+    {
+      "id": "korean_corn",
+      "name": "Korean Corn",
+      "price": 289,
+      "veg": true,
+      "category": "Appetizers (Veg)",
+      "available": true
+    },
+    {
+      "id": "paneer_manchurian",
+      "name": "Paneer Manchurian",
+      "price": 349,
+      "veg": true,
+      "category": "Appetizers (Veg)",
+      "available": true
+    },
+    {
+      "id": "paneer_honey_chilli_mustard",
+      "name": "Paneer Honey Chilli Mustard Sauce",
+      "price": 349,
+      "veg": true,
+      "category": "Appetizers (Veg)",
+      "available": true
+    },
+    {
+      "id": "paneer_65",
+      "name": "Paneer 65",
+      "price": 319,
+      "veg": true,
+      "category": "Appetizers (Veg)",
+      "available": true
+    },
+    {
+      "id": "gobi_manchurian",
+      "name": "Gobi Manchurian",
+      "price": 289,
+      "veg": true,
+      "category": "Appetizers (Veg)",
+      "available": true
+    },
+    {
+      "id": "devilled_egg",
+      "name": "Devilled Egg",
+      "price": 299,
+      "veg": false,
+      "category": "Appetizers (Non-Veg)",
+      "available": true
+    },
+    {
+      "id": "fish_fingers",
+      "name": "Fish Fingers",
+      "price": 399,
+      "veg": false,
+      "category": "Appetizers (Non-Veg)",
+      "available": true
+    },
+    {
+      "id": "sriracha_chicken",
+      "name": "Sriracha Chicken",
+      "price": 299,
+      "veg": false,
+      "category": "Appetizers (Non-Veg)",
+      "available": true
+    },
+    {
+      "id": "peri_peri_chicken",
+      "name": "Peri Peri Chicken",
+      "price": 299,
+      "veg": false,
+      "category": "Appetizers (Non-Veg)",
+      "available": true
+    },
+    {
+      "id": "pepper_chicken",
+      "name": "Pepper Chicken",
+      "price": 249,
+      "veg": false,
+      "category": "Appetizers (Non-Veg)",
+      "available": true
+    },
+    {
+      "id": "crispy_chicken",
+      "name": "Crispy Chicken",
+      "price": 299,
+      "veg": false,
+      "category": "Appetizers (Non-Veg)",
+      "available": true
+    },
+    {
+      "id": "drums_of_heaven",
+      "name": "Drums of Heaven",
+      "price": 289,
+      "veg": false,
+      "category": "Appetizers (Non-Veg)",
+      "available": true
+    },
+    {
+      "id": "chicken_lollipop",
+      "name": "Chicken Lollipop",
+      "price": 289,
+      "veg": false,
+      "category": "Appetizers (Non-Veg)",
+      "available": true
+    },
+    {
+      "id": "peri_peri_lollipop",
+      "name": "Peri Peri Lollipop",
+      "price": 299,
+      "veg": false,
+      "category": "Appetizers (Non-Veg)",
+      "available": true
+    },
+    {
+      "id": "peri_peri_wings",
+      "name": "Peri Peri Wings",
+      "price": 299,
+      "veg": false,
+      "category": "Appetizers (Non-Veg)",
+      "available": true
+    },
+    {
+      "id": "korean_chicken",
+      "name": "Korean Chicken",
+      "price": 299,
+      "veg": false,
+      "category": "Appetizers (Non-Veg)",
+      "available": true
+    },
+    {
+      "id": "kung_pao_chicken",
+      "name": "Kung Pao Chicken",
+      "price": 329,
+      "veg": false,
+      "category": "Appetizers (Non-Veg)",
+      "available": true
+    },
+    {
+      "id": "bangkok_chicken",
+      "name": "Bangkok Chicken",
+      "price": 359,
+      "veg": false,
+      "category": "Appetizers (Non-Veg)",
+      "available": true
+    },
+    {
+      "id": "schezwan_wings",
+      "name": "Schezwan Wings",
+      "price": 319,
+      "veg": false,
+      "category": "Appetizers (Non-Veg)",
+      "available": true
+    },
+    {
+      "id": "chicken_wings",
+      "name": "Chicken Wings",
+      "price": 299,
+      "veg": false,
+      "category": "Appetizers (Non-Veg)",
+      "available": true
+    },
+    {
+      "id": "korean_chicken_wings",
+      "name": "Korean Chicken Wings",
+      "price": 349,
+      "veg": false,
+      "category": "Appetizers (Non-Veg)",
+      "available": true
+    },
+    {
+      "id": "chicken_dry_fry",
+      "name": "Chicken Dry Fry",
+      "price": 219,
+      "veg": false,
+      "category": "Appetizers (Non-Veg)",
+      "available": true
+    },
+    {
+      "id": "garlic_chicken_app",
+      "name": "Garlic Chicken",
+      "price": 299,
+      "veg": false,
+      "category": "Appetizers (Non-Veg)",
+      "available": true
+    },
+    {
+      "id": "dragon_chicken",
+      "name": "Dragon Chicken",
+      "price": 299,
+      "veg": false,
+      "category": "Appetizers (Non-Veg)",
+      "available": true
+    },
+    {
+      "id": "chicken_nuggets",
+      "name": "Chicken Nuggets",
+      "price": 319,
+      "veg": false,
+      "category": "Appetizers (Non-Veg)",
+      "available": true
+    },
+    {
+      "id": "devilled_prawns",
+      "name": "Devilled Prawns",
+      "price": 649,
+      "veg": false,
+      "category": "Appetizers (Non-Veg)",
+      "available": true
+    },
+    {
+      "id": "peri_peri_prawns",
+      "name": "Peri Peri Prawns",
+      "price": 649,
+      "veg": false,
+      "category": "Appetizers (Non-Veg)",
+      "available": true
+    },
+    {
+      "id": "tempura_prawns",
+      "name": "Tempura Prawns",
+      "price": 649,
+      "veg": false,
+      "category": "Appetizers (Non-Veg)",
+      "available": true
+    },
+    {
+      "id": "golden_fried_prawns",
+      "name": "Golden Fried Prawns",
+      "price": 649,
+      "veg": false,
+      "category": "Appetizers (Non-Veg)",
+      "available": true
+    },
+    {
+      "id": "oriental_schezwan_chicken",
+      "name": "Oriental Schezwan Chicken",
+      "price": 359,
+      "veg": false,
+      "category": "Appetizers (Non-Veg)",
+      "available": true
+    },
+    {
+      "id": "spaghetti_aglio_e_olio_veg",
+      "name": "Spaghetti Aglio E Olio (Veg)",
+      "price": 379,
+      "veg": true,
+      "category": "Pasta",
+      "available": true
+    },
+    {
+      "id": "spaghetti_aglio_e_olio_nonveg",
+      "name": "Spaghetti Aglio E Olio (Non-Veg)",
+      "price": 399,
+      "veg": false,
+      "category": "Pasta",
+      "available": true
+    },
+    {
+      "id": "penne_arrabbiata_veg",
+      "name": "Penne Arrabbiata (Veg)",
+      "price": 349,
+      "veg": true,
+      "category": "Pasta",
+      "available": true
+    },
+    {
+      "id": "penne_arrabbiata_nonveg",
+      "name": "Penne Arrabbiata (Non-Veg)",
+      "price": 399,
+      "veg": false,
+      "category": "Pasta",
+      "available": true
+    },
+    {
+      "id": "cheese_white_sauce_pasta_veg",
+      "name": "Cheese White Sauce Pasta (Veg)",
+      "price": 379,
+      "veg": true,
+      "category": "Pasta",
+      "available": true
+    },
+    {
+      "id": "cheese_white_sauce_pasta_nonveg",
+      "name": "Cheese White Sauce Pasta (Non-Veg)",
+      "price": 399,
+      "veg": false,
+      "category": "Pasta",
+      "available": true
+    },
+    {
+      "id": "penne_alfredo_veg",
+      "name": "Penne Alfredo (Veg)",
+      "price": 359,
+      "veg": true,
+      "category": "Pasta",
+      "available": true
+    },
+    {
+      "id": "penne_alfredo_nonveg",
+      "name": "Penne Alfredo (Non-Veg)",
+      "price": 399,
+      "veg": false,
+      "category": "Pasta",
+      "available": true
+    },
+    {
+      "id": "penne_pomodoro_pasta_veg",
+      "name": "Penne Pomodoro Pasta (Veg)",
+      "price": 389,
+      "veg": true,
+      "category": "Pasta",
+      "available": true
+    },
+    {
+      "id": "penne_pomodoro_pasta_nonveg",
+      "name": "Penne Pomodoro Pasta (Non-Veg)",
+      "price": 419,
+      "veg": false,
+      "category": "Pasta",
+      "available": true
+    },
+    {
+      "id": "spaghetti_bolognese_nonveg",
+      "name": "Spaghetti Bolognese (Non-Veg)",
+      "price": 399,
+      "veg": false,
+      "category": "Pasta",
+      "available": true
+    },
+    {
+      "id": "chicken_sizzler",
+      "name": "Chicken Sizzler",
+      "price": 699,
+      "veg": false,
+      "category": "Sizzler",
+      "available": true
+    },
+    {
+      "id": "prawn_sizzler",
+      "name": "Prawn Sizzler",
+      "price": 999,
+      "veg": false,
+      "category": "Sizzler",
+      "available": true
+    },
+    {
+      "id": "paneer_sizzler",
+      "name": "Paneer Sizzler",
+      "price": 749,
+      "veg": true,
+      "category": "Sizzler",
+      "available": true
+    },
+    {
+      "id": "grilled_teriyaki_chicken",
+      "name": "Teriyaki Rom-Com Chicken",
+      "price": 449,
+      "veg": false,
+      "category": "Grilled",
+      "available": true
+    },
+    {
+      "id": "grilled_chicken_lemon_butter",
+      "name": "Grilled Chicken (with lemon butter sauce)",
+      "price": 449,
+      "veg": false,
+      "category": "Grilled",
+      "available": true
+    },
+    {
+      "id": "american_chopsuey_veg",
+      "name": "American Chopsuey (Veg)",
+      "price": 289,
+      "veg": true,
+      "category": "Chopsuey",
+      "available": true
+    },
+    {
+      "id": "american_chopsuey_nonveg",
+      "name": "American Chopsuey (Non-Veg)",
+      "price": 299,
+      "veg": false,
+      "category": "Chopsuey",
+      "available": true
+    },
+    {
+      "id": "chinese_chopsuey_veg",
+      "name": "Chinese Chopsuey (Veg)",
+      "price": 299,
+      "veg": true,
+      "category": "Chopsuey",
+      "available": true
+    },
+    {
+      "id": "chinese_chopsuey_nonveg",
+      "name": "Chinese Chopsuey (Non-Veg)",
+      "price": 319,
+      "veg": false,
+      "category": "Chopsuey",
+      "available": true
+    },
+    {
+      "id": "dragon_chopsuey_veg",
+      "name": "Dragon Chopsuey (Veg)",
+      "price": 289,
+      "veg": true,
+      "category": "Chopsuey",
+      "available": true
+    },
+    {
+      "id": "dragon_chopsuey_nonveg",
+      "name": "Dragon Chopsuey (Non-Veg)",
+      "price": 319,
+      "veg": false,
+      "category": "Chopsuey",
+      "available": true
+    },
+    {
+      "id": "hakka_noodles_veg",
+      "name": "Hakka Noodles (Veg)",
+      "price": 149,
+      "veg": true,
+      "category": "Noodles",
+      "available": true
+    },
+    {
+      "id": "hakka_noodles_egg",
+      "name": "Hakka Noodles (Egg)",
+      "price": 159,
+      "veg": false,
+      "category": "Noodles",
+      "available": true
+    },
+    {
+      "id": "hakka_noodles_chicken",
+      "name": "Hakka Noodles (Chicken)",
+      "price": 189,
+      "veg": false,
+      "category": "Noodles",
+      "available": true
+    },
+    {
+      "id": "hakka_noodles_squid",
+      "name": "Hakka Noodles (Squid)",
+      "price": 249,
+      "veg": false,
+      "category": "Noodles",
+      "available": true
+    },
+    {
+      "id": "hakka_noodles_prawns",
+      "name": "Hakka Noodles (Prawns)",
+      "price": 259,
+      "veg": false,
+      "category": "Noodles",
+      "available": true
+    },
+    {
+      "id": "hakka_noodles_mix",
+      "name": "Hakka Noodles (Mix)",
+      "price": 299,
+      "veg": false,
+      "category": "Noodles",
+      "available": true
+    },
+    {
+      "id": "schezwan_noodles_veg",
+      "name": "Schezwan Noodles (Veg)",
+      "price": 149,
+      "veg": true,
+      "category": "Noodles",
+      "available": true
+    },
+    {
+      "id": "schezwan_noodles_egg",
+      "name": "Schezwan Noodles (Egg)",
+      "price": 159,
+      "veg": false,
+      "category": "Noodles",
+      "available": true
+    },
+    {
+      "id": "schezwan_noodles_chicken",
+      "name": "Schezwan Noodles (Chicken)",
+      "price": 189,
+      "veg": false,
+      "category": "Noodles",
+      "available": true
+    },
+    {
+      "id": "schezwan_noodles_squid",
+      "name": "Schezwan Noodles (Squid)",
+      "price": 249,
+      "veg": false,
+      "category": "Noodles",
+      "available": true
+    },
+    {
+      "id": "schezwan_noodles_prawns",
+      "name": "Schezwan Noodles (Prawns)",
+      "price": 259,
+      "veg": false,
+      "category": "Noodles",
+      "available": true
+    },
+    {
+      "id": "schezwan_noodles_mix",
+      "name": "Schezwan Noodles (Mix)",
+      "price": 299,
+      "veg": false,
+      "category": "Noodles",
+      "available": true
+    },
+    {
+      "id": "chilli_garlic_noodles_veg",
+      "name": "Chilli Garlic Noodles (Veg)",
+      "price": 149,
+      "veg": true,
+      "category": "Noodles",
+      "available": true
+    },
+    {
+      "id": "chilli_garlic_noodles_egg",
+      "name": "Chilli Garlic Noodles (Egg)",
+      "price": 159,
+      "veg": false,
+      "category": "Noodles",
+      "available": true
+    },
+    {
+      "id": "chilli_garlic_noodles_chicken",
+      "name": "Chilli Garlic Noodles (Chicken)",
+      "price": 189,
+      "veg": false,
+      "category": "Noodles",
+      "available": true
+    },
+    {
+      "id": "chilli_garlic_noodles_squid",
+      "name": "Chilli Garlic Noodles (Squid)",
+      "price": 249,
+      "veg": false,
+      "category": "Noodles",
+      "available": true
+    },
+    {
+      "id": "chilli_garlic_noodles_prawns",
+      "name": "Chilli Garlic Noodles (Prawns)",
+      "price": 259,
+      "veg": false,
+      "category": "Noodles",
+      "available": true
+    },
+    {
+      "id": "chilli_garlic_noodles_mix",
+      "name": "Chilli Garlic Noodles (Mix)",
+      "price": 299,
+      "veg": false,
+      "category": "Noodles",
+      "available": true
+    },
+    {
+      "id": "sriracha_noodles_veg",
+      "name": "Sriracha Noodles (Veg)",
+      "price": 149,
+      "veg": true,
+      "category": "Noodles",
+      "available": true
+    },
+    {
+      "id": "sriracha_noodles_egg",
+      "name": "Sriracha Noodles (Egg)",
+      "price": 159,
+      "veg": false,
+      "category": "Noodles",
+      "available": true
+    },
+    {
+      "id": "sriracha_noodles_chicken",
+      "name": "Sriracha Noodles (Chicken)",
+      "price": 189,
+      "veg": false,
+      "category": "Noodles",
+      "available": true
+    },
+    {
+      "id": "sriracha_noodles_squid",
+      "name": "Sriracha Noodles (Squid)",
+      "price": 249,
+      "veg": false,
+      "category": "Noodles",
+      "available": true
+    },
+    {
+      "id": "sriracha_noodles_prawns",
+      "name": "Sriracha Noodles (Prawns)",
+      "price": 259,
+      "veg": false,
+      "category": "Noodles",
+      "available": true
+    },
+    {
+      "id": "sriracha_noodles_mix",
+      "name": "Sriracha Noodles (Mix)",
+      "price": 319,
+      "veg": false,
+      "category": "Noodles",
+      "available": true
+    },
+    {
+      "id": "singaporean_noodles_veg",
+      "name": "Singaporean Noodles (Veg)",
+      "price": 149,
+      "veg": true,
+      "category": "Noodles",
+      "available": true
+    },
+    {
+      "id": "singaporean_noodles_egg",
+      "name": "Singaporean Noodles (Egg)",
+      "price": 159,
+      "veg": false,
+      "category": "Noodles",
+      "available": true
+    },
+    {
+      "id": "singaporean_noodles_chicken",
+      "name": "Singaporean Noodles (Chicken)",
+      "price": 189,
+      "veg": false,
+      "category": "Noodles",
+      "available": true
+    },
+    {
+      "id": "singaporean_noodles_squid",
+      "name": "Singaporean Noodles (Squid)",
+      "price": 249,
+      "veg": false,
+      "category": "Noodles",
+      "available": true
+    },
+    {
+      "id": "singaporean_noodles_prawns",
+      "name": "Singaporean Noodles (Prawns)",
+      "price": 259,
+      "veg": false,
+      "category": "Noodles",
+      "available": true
+    },
+    {
+      "id": "singaporean_noodles_mix",
+      "name": "Singaporean Noodles (Mix)",
+      "price": 319,
+      "veg": false,
+      "category": "Noodles",
+      "available": true
+    },
+    {
+      "id": "plain_fried_rice_veg",
+      "name": "Plain Fried Rice (Veg)",
+      "price": 149,
+      "veg": true,
+      "category": "Fried Rice",
+      "available": true
+    },
+    {
+      "id": "plain_fried_rice_egg",
+      "name": "Plain Fried Rice (Egg)",
+      "price": 159,
+      "veg": false,
+      "category": "Fried Rice",
+      "available": true
+    },
+    {
+      "id": "plain_fried_rice_chicken",
+      "name": "Plain Fried Rice (Chicken)",
+      "price": 189,
+      "veg": false,
+      "category": "Fried Rice",
+      "available": true
+    },
+    {
+      "id": "plain_fried_rice_squid",
+      "name": "Plain Fried Rice (Squid)",
+      "price": 279,
+      "veg": false,
+      "category": "Fried Rice",
+      "available": true
+    },
+    {
+      "id": "plain_fried_rice_prawns",
+      "name": "Plain Fried Rice (Prawns)",
+      "price": 299,
+      "veg": false,
+      "category": "Fried Rice",
+      "available": true
+    },
+    {
+      "id": "plain_fried_rice_mix",
+      "name": "Plain Fried Rice (Mix)",
+      "price": 319,
+      "veg": false,
+      "category": "Fried Rice",
+      "available": true
+    },
+    {
+      "id": "burnt_garlic_fried_rice_veg",
+      "name": "Burnt Garlic Fried Rice (Veg)",
+      "price": 149,
+      "veg": true,
+      "category": "Fried Rice",
+      "available": true
+    },
+    {
+      "id": "burnt_garlic_fried_rice_egg",
+      "name": "Burnt Garlic Fried Rice (Egg)",
+      "price": 159,
+      "veg": false,
+      "category": "Fried Rice",
+      "available": true
+    },
+    {
+      "id": "burnt_garlic_fried_rice_chicken",
+      "name": "Burnt Garlic Fried Rice (Chicken)",
+      "price": 189,
+      "veg": false,
+      "category": "Fried Rice",
+      "available": true
+    },
+    {
+      "id": "burnt_garlic_fried_rice_squid",
+      "name": "Burnt Garlic Fried Rice (Squid)",
+      "price": 279,
+      "veg": false,
+      "category": "Fried Rice",
+      "available": true
+    },
+    {
+      "id": "burnt_garlic_fried_rice_prawns",
+      "name": "Burnt Garlic Fried Rice (Prawns)",
+      "price": 299,
+      "veg": false,
+      "category": "Fried Rice",
+      "available": true
+    },
+    {
+      "id": "burnt_garlic_fried_rice_mix",
+      "name": "Burnt Garlic Fried Rice (Mix)",
+      "price": 319,
+      "veg": false,
+      "category": "Fried Rice",
+      "available": true
+    },
+    {
+      "id": "schezwan_fried_rice_veg",
+      "name": "Schezwan Fried Rice (Veg)",
+      "price": 149,
+      "veg": true,
+      "category": "Fried Rice",
+      "available": true
+    },
+    {
+      "id": "schezwan_fried_rice_egg",
+      "name": "Schezwan Fried Rice (Egg)",
+      "price": 159,
+      "veg": false,
+      "category": "Fried Rice",
+      "available": true
+    },
+    {
+      "id": "schezwan_fried_rice_chicken",
+      "name": "Schezwan Fried Rice (Chicken)",
+      "price": 189,
+      "veg": false,
+      "category": "Fried Rice",
+      "available": true
+    },
+    {
+      "id": "schezwan_fried_rice_squid",
+      "name": "Schezwan Fried Rice (Squid)",
+      "price": 279,
+      "veg": false,
+      "category": "Fried Rice",
+      "available": true
+    },
+    {
+      "id": "schezwan_fried_rice_prawns",
+      "name": "Schezwan Fried Rice (Prawns)",
+      "price": 299,
+      "veg": false,
+      "category": "Fried Rice",
+      "available": true
+    },
+    {
+      "id": "schezwan_fried_rice_mix",
+      "name": "Schezwan Fried Rice (Mix)",
+      "price": 319,
+      "veg": false,
+      "category": "Fried Rice",
+      "available": true
+    },
+    {
+      "id": "chilli_garlic_fried_rice_veg",
+      "name": "Chilli Garlic Fried Rice (Veg)",
+      "price": 149,
+      "veg": true,
+      "category": "Fried Rice",
+      "available": true
+    },
+    {
+      "id": "chilli_garlic_fried_rice_egg",
+      "name": "Chilli Garlic Fried Rice (Egg)",
+      "price": 159,
+      "veg": false,
+      "category": "Fried Rice",
+      "available": true
+    },
+    {
+      "id": "chilli_garlic_fried_rice_chicken",
+      "name": "Chilli Garlic Fried Rice (Chicken)",
+      "price": 189,
+      "veg": false,
+      "category": "Fried Rice",
+      "available": true
+    },
+    {
+      "id": "chilli_garlic_fried_rice_squid",
+      "name": "Chilli Garlic Fried Rice (Squid)",
+      "price": 279,
+      "veg": false,
+      "category": "Fried Rice",
+      "available": true
+    },
+    {
+      "id": "chilli_garlic_fried_rice_prawns",
+      "name": "Chilli Garlic Fried Rice (Prawns)",
+      "price": 299,
+      "veg": false,
+      "category": "Fried Rice",
+      "available": true
+    },
+    {
+      "id": "chilli_garlic_fried_rice_mix",
+      "name": "Chilli Garlic Fried Rice (Mix)",
+      "price": 319,
+      "veg": false,
+      "category": "Fried Rice",
+      "available": true
+    },
+    {
+      "id": "sriracha_fried_rice_veg",
+      "name": "Sriracha Fried Rice (Veg)",
+      "price": 149,
+      "veg": true,
+      "category": "Fried Rice",
+      "available": true
+    },
+    {
+      "id": "sriracha_fried_rice_egg",
+      "name": "Sriracha Fried Rice (Egg)",
+      "price": 159,
+      "veg": false,
+      "category": "Fried Rice",
+      "available": true
+    },
+    {
+      "id": "sriracha_fried_rice_chicken",
+      "name": "Sriracha Fried Rice (Chicken)",
+      "price": 189,
+      "veg": false,
+      "category": "Fried Rice",
+      "available": true
+    },
+    {
+      "id": "sriracha_fried_rice_squid",
+      "name": "Sriracha Fried Rice (Squid)",
+      "price": 279,
+      "veg": false,
+      "category": "Fried Rice",
+      "available": true
+    },
+    {
+      "id": "sriracha_fried_rice_prawns",
+      "name": "Sriracha Fried Rice (Prawns)",
+      "price": 299,
+      "veg": false,
+      "category": "Fried Rice",
+      "available": true
+    },
+    {
+      "id": "sriracha_fried_rice_mix",
+      "name": "Sriracha Fried Rice (Mix)",
+      "price": 319,
+      "veg": false,
+      "category": "Fried Rice",
+      "available": true
+    },
+    {
+      "id": "veg_cheese_momo_6pc",
+      "name": "Veg Cheese Momo (6pc)",
+      "price": 159,
+      "veg": true,
+      "category": "Momo",
+      "available": true
+    },
+    {
+      "id": "veg_cheese_kurkure_momo_6pc",
+      "name": "Veg Cheese Kurkure Momo (6pc)",
+      "price": 199,
+      "veg": true,
+      "category": "Momo",
+      "available": true
+    },
+    {
+      "id": "paneer_momo_6pc",
+      "name": "Paneer Momo (6pc)",
+      "price": 169,
+      "veg": true,
+      "category": "Momo",
+      "available": true
+    },
+    {
+      "id": "chicken_momo_8pc",
+      "name": "Chicken Momo (8pc)",
+      "price": 149,
+      "veg": false,
+      "category": "Momo",
+      "available": true
+    },
+    {
+      "id": "fried_momo_chicken_8pc",
+      "name": "Fried Momo (Chicken) (8pc)",
+      "price": 189,
+      "veg": false,
+      "category": "Momo",
+      "available": true
+    },
+    {
+      "id": "pan_fried_momo_veg_6pc",
+      "name": "Pan Fried Momo (Veg) (6pc)",
+      "price": 169,
+      "veg": true,
+      "category": "Momo",
+      "available": true
+    },
+    {
+      "id": "pan_fried_momo_chicken_6pc",
+      "name": "Pan Fried Momo (Chicken) (6pc)",
+      "price": 189,
+      "veg": false,
+      "category": "Momo",
+      "available": true
+    },
+    {
+      "id": "schezwan_momo_chicken_6pc",
+      "name": "Schezwan Momo (Chicken) (6pc)",
+      "price": 189,
+      "veg": false,
+      "category": "Momo",
+      "available": true
+    },
+    {
+      "id": "kurkure_momo_veg_6pc",
+      "name": "Kurkure Momo (Veg) (6pc)",
+      "price": 189,
+      "veg": true,
+      "category": "Momo",
+      "available": true
+    },
+    {
+      "id": "kurkure_momo_chicken_6pc",
+      "name": "Kurkure Momo (Chicken) (6pc)",
+      "price": 219,
+      "veg": false,
+      "category": "Momo",
+      "available": true
+    },
+    {
+      "id": "malai_momo_veg_8pc",
+      "name": "Malai Momo (Veg) (8pc)",
+      "price": 269,
+      "veg": true,
+      "category": "Momo",
+      "available": true
+    },
+    {
+      "id": "malai_momo_chicken_8pc",
+      "name": "Malai Momo (Chicken) (8pc)",
+      "price": 289,
+      "veg": false,
+      "category": "Momo",
+      "available": true
+    },
+    {
+      "id": "cheesy_loaded_momo_veg_8pc",
+      "name": "Cheesy Loaded Momo (Veg) (8pc)",
+      "price": 289,
+      "veg": true,
+      "category": "Momo",
+      "available": true
+    },
+    {
+      "id": "cheesy_loaded_momo_chicken_8pc",
+      "name": "Cheesy Loaded Momo (Chicken) (8pc)",
+      "price": 309,
+      "veg": false,
+      "category": "Momo",
+      "available": true
+    },
+    {
+      "id": "veg_roll",
+      "name": "Veg Roll",
+      "price": 129,
+      "veg": true,
+      "category": "Rolls",
+      "available": true
+    },
+    {
+      "id": "veg_cheese_roll",
+      "name": "Veg Cheese Roll",
+      "price": 159,
+      "veg": true,
+      "category": "Rolls",
+      "available": true
+    },
+    {
+      "id": "paneer_roll",
+      "name": "Paneer Roll",
+      "price": 169,
+      "veg": true,
+      "category": "Rolls",
+      "available": true
+    },
+    {
+      "id": "kolkata_kathi_roll_veg",
+      "name": "Kolkata Kathi Roll (Veg)",
+      "price": 179,
+      "veg": true,
+      "category": "Rolls",
+      "available": true
+    },
+    {
+      "id": "egg_roll",
+      "name": "Egg Roll",
+      "price": 149,
+      "veg": false,
+      "category": "Rolls",
+      "available": true
+    },
+    {
+      "id": "egg_cheese_roll",
+      "name": "Egg Cheese Roll",
+      "price": 179,
+      "veg": false,
+      "category": "Rolls",
+      "available": true
+    },
+    {
+      "id": "double_egg_roll",
+      "name": "Double Egg Roll",
+      "price": 189,
+      "veg": false,
+      "category": "Rolls",
+      "available": true
+    },
+    {
+      "id": "chicken_roll",
+      "name": "Chicken Roll",
+      "price": 159,
+      "veg": false,
+      "category": "Rolls",
+      "available": true
+    },
+    {
+      "id": "chicken_cheese_roll",
+      "name": "Chicken Cheese Roll",
+      "price": 169,
+      "veg": false,
+      "category": "Rolls",
+      "available": true
+    },
+    {
+      "id": "manchow_soup_veg",
+      "name": "Manchow Soup (Veg)",
+      "price": 179,
+      "veg": true,
+      "category": "Soup",
+      "available": true
+    },
+    {
+      "id": "manchow_soup_nonveg",
+      "name": "Manchow Soup (Non-Veg)",
+      "price": 199,
+      "veg": false,
+      "category": "Soup",
+      "available": true
+    },
+    {
+      "id": "sweet_corn_soup",
+      "name": "Sweet Corn Soup",
+      "price": 189,
+      "veg": true,
+      "category": "Soup",
+      "available": true
+    },
+    {
+      "id": "hot_sour_soup_veg",
+      "name": "Hot & Sour Soup (Veg)",
+      "price": 149,
+      "veg": true,
+      "category": "Soup",
+      "available": true
+    },
+    {
+      "id": "hot_sour_soup_nonveg",
+      "name": "Hot & Sour Soup (Non-Veg)",
+      "price": 199,
+      "veg": false,
+      "category": "Soup",
+      "available": true
+    },
+    {
+      "id": "tom_yum_soup_veg",
+      "name": "Tom Yum Soup (Veg)",
+      "price": 179,
+      "veg": true,
+      "category": "Soup",
+      "available": true
+    },
+    {
+      "id": "tom_yum_soup_nonveg",
+      "name": "Tom Yum Soup (Non-Veg)",
+      "price": 199,
+      "veg": false,
+      "category": "Soup",
+      "available": true
+    },
+    {
+      "id": "noodle_soup_veg",
+      "name": "Noodle Soup (Veg)",
+      "price": 169,
+      "veg": true,
+      "category": "Soup",
+      "available": true
+    },
+    {
+      "id": "noodle_soup_nonveg",
+      "name": "Noodle Soup (Non-Veg)",
+      "price": 199,
+      "veg": false,
+      "category": "Soup",
+      "available": true
+    },
+    {
+      "id": "manchurian_manchow_soup_veg",
+      "name": "Manchurian Manchow Soup (Veg)",
+      "price": 189,
+      "veg": true,
+      "category": "Soup",
+      "available": true
+    },
+    {
+      "id": "manchurian_manchow_soup_nonveg",
+      "name": "Manchurian Manchow Soup (Non-Veg)",
+      "price": 219,
+      "veg": false,
+      "category": "Soup",
+      "available": true
+    },
+    {
+      "id": "pad_thai_noodles_veg",
+      "name": "Pad Thai Noodles (Veg)",
+      "price": 319,
+      "veg": true,
+      "category": "Thai",
+      "available": true
+    },
+    {
+      "id": "pad_thai_noodles_chicken",
+      "name": "Pad Thai Noodles (Chicken)",
+      "price": 499,
+      "veg": false,
+      "category": "Thai",
+      "available": true
+    },
+    {
+      "id": "red_thai_curry_veg",
+      "name": "Red Thai Curry (Veg)",
+      "price": 579,
+      "veg": true,
+      "category": "Thai",
+      "available": true
+    },
+    {
+      "id": "red_thai_curry_chicken",
+      "name": "Red Thai Curry (Chicken)",
+      "price": 649,
+      "veg": false,
+      "category": "Thai",
+      "available": true
+    },
+    {
+      "id": "green_thai_curry_veg",
+      "name": "Green Thai Curry (Veg)",
+      "price": 579,
+      "veg": true,
+      "category": "Thai",
+      "available": true
+    },
+    {
+      "id": "green_thai_curry_chicken",
+      "name": "Green Thai Curry (Chicken)",
+      "price": 649,
+      "veg": false,
+      "category": "Thai",
+      "available": true
+    },
+    {
+      "id": "ebi_tempura_uramaki",
+      "name": "Ebi Tempura Uramaki",
+      "price": 699,
+      "veg": false,
+      "category": "Asian & Sushi",
+      "available": true
+    },
+    {
+      "id": "spicy_avocado_sushi",
+      "name": "Spicy Avocado Sushi",
+      "price": 649,
+      "veg": true,
+      "category": "Asian & Sushi",
+      "available": true
+    },
+    {
+      "id": "california_roll_veg",
+      "name": "California Roll (Veg)",
+      "price": 599,
+      "veg": true,
+      "category": "Asian & Sushi",
+      "available": true
+    },
+    {
+      "id": "california_roll_nonveg",
+      "name": "California Roll (Non-Veg)",
+      "price": 599,
+      "veg": false,
+      "category": "Asian & Sushi",
+      "available": true
+    },
+    {
+      "id": "kimpa_veg",
+      "name": "Kimpa (Veg)",
+      "price": 599,
+      "veg": true,
+      "category": "Asian & Sushi",
+      "available": true
+    },
+    {
+      "id": "kimpa_nonveg",
+      "name": "Kimpa (Non-Veg)",
+      "price": 699,
+      "veg": false,
+      "category": "Asian & Sushi",
+      "available": true
+    },
+    {
+      "id": "katsu_maki_veg",
+      "name": "Katsu Maki (Veg)",
+      "price": 599,
+      "veg": true,
+      "category": "Asian & Sushi",
+      "available": true
+    },
+    {
+      "id": "katsu_maki_nonveg",
+      "name": "Katsu Maki (Non-Veg)",
+      "price": 699,
+      "veg": false,
+      "category": "Asian & Sushi",
+      "available": true
+    },
+    {
+      "id": "volcano_roll_veg",
+      "name": "Volcano Roll (Veg)",
+      "price": 649,
+      "veg": true,
+      "category": "Asian & Sushi",
+      "available": true
+    },
+    {
+      "id": "volcano_roll_nonveg",
+      "name": "Volcano Roll (Non-Veg)",
+      "price": 699,
+      "veg": false,
+      "category": "Asian & Sushi",
+      "available": true
+    },
+    {
+      "id": "cottage_cheese_bao",
+      "name": "Cottage Cheese Bao",
+      "price": 549,
+      "veg": true,
+      "category": "Bao",
+      "available": true
+    },
+    {
+      "id": "korean_fried_chicken_bao",
+      "name": "Korean Fried Chicken Bao",
+      "price": 599,
+      "veg": false,
+      "category": "Bao",
+      "available": true
+    },
+    {
+      "id": "teriyaki_chicken_bao",
+      "name": "Teriyaki Chicken Bao",
+      "price": 599,
+      "veg": false,
+      "category": "Bao",
+      "available": true
+    },
+    {
+      "id": "lotus_stem_bao",
+      "name": "Lotus Stem Bao",
+      "price": 649,
+      "veg": true,
+      "category": "Bao",
+      "available": true
+    },
+    {
+      "id": "veg_thali",
+      "name": "Veg Thali",
+      "price": 169,
+      "veg": true,
+      "category": "Ethnic Thali",
+      "available": true
+    },
+    {
+      "id": "fish_thali",
+      "name": "Fish Thali",
+      "price": 199,
+      "veg": false,
+      "category": "Ethnic Thali",
+      "available": true
+    },
+    {
+      "id": "chicken_thali",
+      "name": "Chicken Thali",
+      "price": 249,
+      "veg": false,
+      "category": "Ethnic Thali",
+      "available": true
+    },
+    {
+      "id": "duck_thali",
+      "name": "Duck Thali",
+      "price": 399,
+      "veg": false,
+      "category": "Ethnic Thali",
+      "available": true
+    },
+    {
+      "id": "egg_biryani",
+      "name": "Egg Biryani",
+      "price": 299,
+      "veg": false,
+      "category": "Biryani",
+      "available": true
+    },
+    {
+      "id": "paneer_biryani",
+      "name": "Paneer Biryani",
+      "price": 399,
+      "veg": true,
+      "category": "Biryani",
+      "available": true
+    },
+    {
+      "id": "chicken_dum_biryani",
+      "name": "Chicken Dum Biryani (serving 1 person)",
+      "price": 379,
+      "veg": false,
+      "category": "Biryani",
+      "available": true
+    },
+    {
+      "id": "veg_pulao",
+      "name": "Veg Pulao",
+      "price": 199,
+      "veg": true,
+      "category": "Pulao",
+      "available": true
+    },
+    {
+      "id": "paneer_pulao",
+      "name": "Paneer Pulao",
+      "price": 289,
+      "veg": true,
+      "category": "Pulao",
+      "available": true
+    },
+    {
+      "id": "matar_pulao",
+      "name": "Matar Pulao",
+      "price": 229,
+      "veg": true,
+      "category": "Pulao",
+      "available": true
+    },
+    {
+      "id": "plain_rice",
+      "name": "Plain Rice",
+      "price": 79,
+      "veg": true,
+      "category": "Rice",
+      "available": true
+    },
+    {
+      "id": "ghee_rice",
+      "name": "Ghee Rice",
+      "price": 199,
+      "veg": true,
+      "category": "Rice",
+      "available": true
+    },
+    {
+      "id": "jeera_rice",
+      "name": "Jeera Rice",
+      "price": 139,
+      "veg": true,
+      "category": "Rice",
+      "available": true
+    },
+    {
+      "id": "lemon_rice",
+      "name": "Lemon Rice",
+      "price": 129,
+      "veg": true,
+      "category": "Rice",
+      "available": true
+    },
+    {
+      "id": "tawa_roti",
+      "name": "Tawa Roti",
+      "price": 15,
+      "veg": true,
+      "category": "Roti",
+      "available": true
+    },
+    {
+      "id": "butter_tawa_roti",
+      "name": "Butter Tawa Roti",
+      "price": 19,
+      "veg": true,
+      "category": "Roti",
+      "available": true
+    },
+    {
+      "id": "plain_dal",
+      "name": "Plain Dal",
+      "price": 99,
+      "veg": true,
+      "category": "Indian (Veg)",
+      "available": true
+    },
+    {
+      "id": "dal_makhni",
+      "name": "Dal Makhni",
+      "price": 249,
+      "veg": true,
+      "category": "Indian (Veg)",
+      "available": true
+    },
+    {
+      "id": "dal_tadka",
+      "name": "Dal Tadka",
+      "price": 179,
+      "veg": true,
+      "category": "Indian (Veg)",
+      "available": true
+    },
+    {
+      "id": "nawami_dal",
+      "name": "Nawami Dal",
+      "price": 189,
+      "veg": true,
+      "category": "Indian (Veg)",
+      "available": true
+    },
+    {
+      "id": "aloo_jeera",
+      "name": "Aloo Jeera",
+      "price": 159,
+      "veg": true,
+      "category": "Indian (Veg)",
+      "available": true
+    },
+    {
+      "id": "veg_kofta",
+      "name": "Veg Kofta",
+      "price": 219,
+      "veg": true,
+      "category": "Indian (Veg)",
+      "available": true
+    },
+    {
+      "id": "veg_malai_kofta",
+      "name": "Veg Malai Kofta",
+      "price": 299,
+      "veg": true,
+      "category": "Indian (Veg)",
+      "available": true
+    },
+    {
+      "id": "akbari_paneer",
+      "name": "Akbari Paneer",
+      "price": 389,
+      "veg": true,
+      "category": "Indian (Veg)",
+      "available": true
+    },
+    {
+      "id": "paneer_lababdar",
+      "name": "Paneer Lababdar",
+      "price": 399,
+      "veg": true,
+      "category": "Indian (Veg)",
+      "available": true
+    },
+    {
+      "id": "veg_jalfrezi",
+      "name": "Veg Jalfrezi",
+      "price": 289,
+      "veg": true,
+      "category": "Indian (Veg)",
+      "available": true
+    },
+    {
+      "id": "mix_veg_korma",
+      "name": "Mix Veg Korma",
+      "price": 319,
+      "veg": true,
+      "category": "Indian (Veg)",
+      "available": true
+    },
+    {
+      "id": "methi_malai_matar",
+      "name": "Methi Malai Matar",
+      "price": 279,
+      "veg": true,
+      "category": "Indian (Veg)",
+      "available": true
+    },
+    {
+      "id": "paneer_masala",
+      "name": "Paneer Masala",
+      "price": 339,
+      "veg": true,
+      "category": "Indian (Veg)",
+      "available": true
+    },
+    {
+      "id": "palak_paneer",
+      "name": "Palak Paneer",
+      "price": 349,
+      "veg": true,
+      "category": "Indian (Veg)",
+      "available": true
+    },
+    {
+      "id": "paneer_do_pyaza",
+      "name": "Paneer Do Pyaza",
+      "price": 339,
+      "veg": true,
+      "category": "Indian (Veg)",
+      "available": true
+    },
+    {
+      "id": "paneer_patiala",
+      "name": "Paneer Patiala",
+      "price": 429,
+      "veg": true,
+      "category": "Indian (Veg)",
+      "available": true
+    },
+    {
+      "id": "paneer_khursan",
+      "name": "Paneer Khursan",
+      "price": 449,
+      "veg": true,
+      "category": "Indian (Veg)",
+      "available": true
+    },
+    {
+      "id": "paneer_butter_masala",
+      "name": "Paneer Butter Masala",
+      "price": 349,
+      "veg": true,
+      "category": "Indian (Veg)",
+      "available": true
+    },
+    {
+      "id": "matar_paneer",
+      "name": "Matar Paneer",
+      "price": 299,
+      "veg": true,
+      "category": "Indian (Veg)",
+      "available": true
+    },
+    {
+      "id": "chicken_masala",
+      "name": "Chicken Masala",
+      "price": 329,
+      "veg": false,
+      "category": "Indian (Non-Veg)",
+      "available": true
+    },
+    {
+      "id": "chicken_butter_masala",
+      "name": "Chicken Butter Masala",
+      "price": 399,
+      "veg": false,
+      "category": "Indian (Non-Veg)",
+      "available": true
+    },
+    {
+      "id": "ghee_roast_chicken",
+      "name": "Ghee Roast Chicken",
+      "price": 379,
+      "veg": false,
+      "category": "Indian (Non-Veg)",
+      "available": true
+    },
+    {
+      "id": "chicken_do_pyaza",
+      "name": "Chicken Do Pyaza",
+      "price": 299,
+      "veg": false,
+      "category": "Indian (Non-Veg)",
+      "available": true
+    },
+    {
+      "id": "chicken_hyderabadi",
+      "name": "Chicken Hyderabadi",
+      "price": 299,
+      "veg": false,
+      "category": "Indian (Non-Veg)",
+      "available": true
+    },
+    {
+      "id": "chicken_bharta",
+      "name": "Chicken Bharta",
+      "price": 319,
+      "veg": false,
+      "category": "Indian (Non-Veg)",
+      "available": true
+    },
+    {
+      "id": "lemon_chicken",
+      "name": "Lemon Chicken",
+      "price": 299,
+      "veg": false,
+      "category": "Indian (Non-Veg)",
+      "available": true
+    },
+    {
+      "id": "chilli_paneer",
+      "name": "Chilli Paneer",
+      "price": 319,
+      "veg": true,
+      "category": "Chinese (Veg)",
+      "available": true
+    },
+    {
+      "id": "garlic_paneer",
+      "name": "Garlic Paneer",
+      "price": 299,
+      "veg": true,
+      "category": "Chinese (Veg)",
+      "available": true
+    },
+    {
+      "id": "teriyaki_veg",
+      "name": "Teriyaki Veg",
+      "price": 299,
+      "veg": true,
+      "category": "Chinese (Veg)",
+      "available": true
+    },
+    {
+      "id": "veg_manchurian",
+      "name": "Veg Manchurian",
+      "price": 289,
+      "veg": true,
+      "category": "Chinese (Veg)",
+      "available": true
+    },
+    {
+      "id": "chilli_chicken",
+      "name": "Chilli Chicken",
+      "price": 299,
+      "veg": false,
+      "category": "Chinese (Non-Veg)",
+      "available": true
+    },
+    {
+      "id": "garlic_chicken_main",
+      "name": "Garlic Chicken (Main)",
+      "price": 279,
+      "veg": false,
+      "category": "Chinese (Non-Veg)",
+      "available": true
+    },
+    {
+      "id": "stir_fried_chicken",
+      "name": "Stir Fried Chicken",
+      "price": 319,
+      "veg": false,
+      "category": "Chinese (Non-Veg)",
+      "available": true
+    },
+    {
+      "id": "dry_red_chilli_chicken",
+      "name": "Dry Red Chilli Chicken",
+      "price": 329,
+      "veg": false,
+      "category": "Chinese (Non-Veg)",
+      "available": true
+    },
+    {
+      "id": "chicken_manchurian",
+      "name": "Chicken Manchurian",
+      "price": 319,
+      "veg": false,
+      "category": "Chinese (Non-Veg)",
+      "available": true
+    },
+    {
+      "id": "octopus_chilli",
+      "name": "Octopus (Chilli)",
+      "price": 649,
+      "veg": false,
+      "category": "Sea Foods",
+      "available": true
+    },
+    {
+      "id": "octopus_stir_fry",
+      "name": "Octopus (Stir Fry)",
+      "price": 649,
+      "veg": false,
+      "category": "Sea Foods",
+      "available": true
+    },
+    {
+      "id": "hot_garlic_octopus",
+      "name": "Hot Garlic Octopus",
+      "price": 699,
+      "veg": false,
+      "category": "Sea Foods",
+      "available": true
+    },
+    {
+      "id": "squid_chilli",
+      "name": "Squid (Chilli)",
+      "price": 599,
+      "veg": false,
+      "category": "Sea Foods",
+      "available": true
+    },
+    {
+      "id": "squid_stir_fry",
+      "name": "Squid (Stir Fry)",
+      "price": 599,
+      "veg": false,
+      "category": "Sea Foods",
+      "available": true
+    },
+    {
+      "id": "singaporean_chilly_prawns",
+      "name": "Singaporean Chilly Prawns",
+      "price": 699,
+      "veg": false,
+      "category": "Sea Foods",
+      "available": true
+    },
+    {
+      "id": "butter_garlic_prawns",
+      "name": "Butter Garlic Prawns",
+      "price": 699,
+      "veg": false,
+      "category": "Sea Foods",
+      "available": true
+    },
+    {
+      "id": "kimchi_salad",
+      "name": "Kimchi Salad",
+      "price": 299,
+      "veg": true,
+      "category": "Salad",
+      "available": true
+    },
+    {
+      "id": "thai_papaya_salad",
+      "name": "Thai Papaya Salad",
+      "price": 199,
+      "veg": true,
+      "category": "Salad",
+      "available": true
+    },
+    {
+      "id": "glass_noodles_salad",
+      "name": "Glass Noodles Salad",
+      "price": 199,
+      "veg": true,
+      "category": "Salad",
+      "available": true
+    },
+    {
+      "id": "green_salad",
+      "name": "Green Salad",
+      "price": 149,
+      "veg": true,
+      "category": "Salad",
+      "available": true
+    },
+    {
+      "id": "cucumber_salad",
+      "name": "Cucumber Salad",
+      "price": 79,
+      "veg": true,
+      "category": "Salad",
+      "available": true
+    },
+    {
+      "id": "lachha_onion_salad",
+      "name": "Lachha Onion Salad",
+      "price": 119,
+      "veg": true,
+      "category": "Salad",
+      "available": true
+    },
+    {
+      "id": "green_tea",
+      "name": "Green Tea",
+      "price": 69,
+      "veg": true,
+      "category": "Beverages",
+      "available": true
+    },
+    {
+      "id": "iced_tea",
+      "name": "Iced Tea",
+      "price": 149,
+      "veg": true,
+      "category": "Beverages",
+      "available": true
+    },
+    {
+      "id": "hot_chocolate",
+      "name": "Hot Chocolate",
+      "price": 169,
+      "veg": true,
+      "category": "Beverages",
+      "available": true
+    },
+    {
+      "id": "hot_coffee",
+      "name": "Hot Coffee",
+      "price": 59,
+      "veg": true,
+      "category": "Beverages",
+      "available": true
+    },
+    {
+      "id": "cold_coffee_ice_cream",
+      "name": "Cold Coffee with Ice Cream",
+      "price": 189,
+      "veg": true,
+      "category": "Beverages",
+      "available": true
+    },
+    {
+      "id": "coke_sprite",
+      "name": "Coke/Sprite (Serving 1)",
+      "price": 49,
+      "veg": true,
+      "category": "Beverages",
+      "available": true
+    },
+    {
+      "id": "masala_coke",
+      "name": "Masala Coke",
+      "price": 79,
+      "veg": true,
+      "category": "Beverages",
+      "available": true
+    },
+    {
+      "id": "virgin_mojito",
+      "name": "Virgin Mojito",
+      "price": 159,
+      "veg": true,
+      "category": "Beverages",
+      "available": true
+    },
+    {
+      "id": "watermelon_juice",
+      "name": "Watermelon Juice",
+      "price": 169,
+      "veg": true,
+      "category": "Beverages",
+      "available": true
+    },
+    {
+      "id": "fresh_lime_soda",
+      "name": "Fresh Lime Soda",
+      "price": 99,
+      "veg": true,
+      "category": "Beverages",
+      "available": true
+    },
+    {
+      "id": "iced_americano",
+      "name": "Iced Americano",
+      "price": 179,
+      "veg": true,
+      "category": "Beverages",
+      "available": true
+    },
+    {
+      "id": "blueberry_shake",
+      "name": "Blueberry Shake",
+      "price": 189,
+      "veg": true,
+      "category": "Beverages",
+      "available": true
+    },
+    {
+      "id": "strawberry_shake",
+      "name": "Strawberry Shake",
+      "price": 159,
+      "veg": true,
+      "category": "Beverages",
+      "available": true
+    },
+    {
+      "id": "oreo_shake_ice_cream",
+      "name": "Oreo Shake with Ice cream",
+      "price": 189,
+      "veg": true,
+      "category": "Beverages",
+      "available": true
+    },
+    {
+      "id": "mango_shake",
+      "name": "Mango Shake",
+      "price": 179,
+      "veg": true,
+      "category": "Beverages",
+      "available": true
+    },
+    {
+      "id": "chocolate_milk_shake",
+      "name": "Chocolate Milk Shake",
+      "price": 179,
+      "veg": true,
+      "category": "Beverages",
+      "available": true
+    },
+    {
+      "id": "butterscotch_milkshake",
+      "name": "Butterscotch MilkShake",
+      "price": 189,
+      "veg": true,
+      "category": "Beverages",
+      "available": true
+    },
+    {
+      "id": "kesar_badam_milkshake",
+      "name": "Kesar Badam Milk Shake",
+      "price": 199,
+      "veg": true,
+      "category": "Beverages",
+      "available": true
+    },
+    {
+      "id": "vanilla_twist",
+      "name": "Vanilla Twist (2 scoop)",
+      "price": 109,
+      "veg": true,
+      "category": "Ice Cream",
+      "available": true
+    },
+    {
+      "id": "strawberry_bliss",
+      "name": "Strawberry Bliss (2 scoop)",
+      "price": 109,
+      "veg": true,
+      "category": "Ice Cream",
+      "available": true
+    },
+    {
+      "id": "butterscotch_crunch",
+      "name": "Butterscotch Crunch (2 scoop)",
+      "price": 109,
+      "veg": true,
+      "category": "Ice Cream",
+      "available": true
+    },
+    {
+      "id": "choco_delight",
+      "name": "Choco Delight (2 scoop)",
+      "price": 109,
+      "veg": true,
+      "category": "Ice Cream",
+      "available": true
+    },
+    {
+      "id": "choco_vanilla",
+      "name": "Choco Vanilla (2 scoop)",
+      "price": 119,
+      "veg": true,
+      "category": "Ice Cream",
+      "available": true
+    },
+    {
+      "id": "berry_vanilla_bliss",
+      "name": "Berry Vanilla Bliss (2 scoop)",
+      "price": 119,
+      "veg": true,
+      "category": "Ice Cream",
+      "available": true
+    },
+    {
+      "id": "golden_vanilla_crunch",
+      "name": "Golden Vanilla Crunch (2 scoop)",
+      "price": 129,
+      "veg": true,
+      "category": "Ice Cream",
+      "available": true
+    },
+    {
+      "id": "choco_berry_delight",
+      "name": "Choco Berry Delight (2 scoop)",
+      "price": 129,
+      "veg": true,
+      "category": "Ice Cream",
+      "available": true
+    },
+    {
+      "id": "berry_butterscotch_fusion",
+      "name": "Berry Butterscotch Fusion (2 scoop)",
+      "price": 149,
+      "veg": true,
+      "category": "Ice Cream",
+      "available": true
+    },
+    {
+      "id": "chocolate_caramel_crunch",
+      "name": "Chocolate Caramel Crunch (2 scoop)",
+      "price": 149,
+      "veg": true,
+      "category": "Ice Cream",
+      "available": true
+    }
   ]
 }
