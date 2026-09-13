@@ -43,6 +43,18 @@ export default function Admin(){
   const [newCode,setNewCode]=useState('');
   const [newPercent,setNewPercent]=useState('');
   const [newEnabled,setNewEnabled]=useState(true);
+  const DEFAULT_DELIVERY_RATES = {
+    maxRadius: 10,
+    tiers: [
+      { upToKm: 5, fee: 60 },
+      { upToKm: 8, fee: 80 },
+      { upToKm: 10, fee: 120 }
+    ]
+  };
+  const [deliveryRates, setDeliveryRates] = useState(DEFAULT_DELIVERY_RATES);
+  const [newTierKm, setNewTierKm] = useState('');
+  const [newTierFee, setNewTierFee] = useState('');
+  const [savingDelivery, setSavingDelivery] = useState(false);
   const [notifiedIds,setNotifiedIds]=useState(()=>{ try{ const s=localStorage.getItem('hc_notified_orders'); return s?JSON.parse(s):[]; }catch{ return []; }});
   useEffect(()=>{ try{ localStorage.setItem('hc_notified_orders', JSON.stringify((notifiedIds||[]).slice(-200))); }catch{} },[notifiedIds]);
   useEffect(()=>{ try{ const s=localStorage.getItem('hc_admin_notifs'); const u=localStorage.getItem('hc_admin_unread'); if(s){ setNotifs(JSON.parse(s)); } if(u){ setUnread(Number(u)||0); } }catch{} },[]);
@@ -185,7 +197,17 @@ export default function Admin(){
     try{ const r=await fetch(`${BACKEND_URL}/api/app-status`); const d=await r.json(); if(r.ok) setStatus(d); }catch{}
   }
   async function refreshOverrides(){
-    try{ const r=await fetch(`${BACKEND_URL}/api/menu-overrides`); const d=await r.json(); if(r.ok){ setOwnerClosed(!!d.appClosed); setClosingMessage(String(d.closingMessage||"")); } }catch{}
+    try{
+      const r=await fetch(`${BACKEND_URL}/api/menu-overrides`);
+      const d=await r.json();
+      if(r.ok){
+        setOwnerClosed(!!d.appClosed);
+        setClosingMessage(String(d.closingMessage||""));
+        if(d.deliveryRates && Array.isArray(d.deliveryRates.tiers)){
+          setDeliveryRates(d.deliveryRates);
+        }
+      }
+    }catch{}
   }
   async function refreshCoupons(){
     try{ if(!token) return; const r=await authedFetch(`${BACKEND_URL}/api/admin/coupons`,{method:'GET'}); const d=await r.json(); if(r.ok && d.ok){ setCoupons(d.coupons||{}); } }catch{}
@@ -481,6 +503,182 @@ export default function Admin(){
             }}>Save Coupon</button>
             <button className="btn" type="button" onClick={()=>{ setNewCode(''); setNewPercent(''); setNewEnabled(true); }}>Clear</button>
             <button className="btn" type="button" onClick={refreshCoupons}>Refresh</button>
+          </div>
+        </div>
+      </div>
+      )}
+      {authed && (
+      <div className="card mt-3">
+        <div className="section-title">Delivery Rates & Radius Management</div>
+        <div className="flex flex-col gap-3">
+          <div>
+            <label className="text-sm font-medium text-muted block mb-1">Max Delivery Radius (km)</label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min="1"
+                step="0.5"
+                className="bg-[#111] border border-[#222] rounded-xl p-2 w-32 text-center"
+                value={deliveryRates.maxRadius}
+                onChange={e => setDeliveryRates(s => ({ ...s, maxRadius: Math.max(1, Number(e.target.value || 1)) }))}
+              />
+              <span className="text-sm text-muted">km (orders beyond this distance are rejected)</span>
+            </div>
+          </div>
+
+          <div className="border-t border-[#222] my-1" />
+
+          <div>
+            <div className="row mb-2">
+              <span className="font-semibold text-sm">Distance Pricing Tiers</span>
+              <span className="text-xs text-muted">Ascending by km</span>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              {(deliveryRates.tiers || []).map((t, idx) => (
+                <div key={idx} className="flex items-center gap-2 bg-[#141414] border border-[#222] p-2 rounded-xl">
+                  <div className="flex-1 flex items-center gap-2 text-sm">
+                    <span className="text-muted">Up to</span>
+                    <input
+                      type="number"
+                      min="0.5"
+                      step="0.5"
+                      className="bg-[#111] border border-[#333] rounded-lg p-1 w-20 text-center"
+                      value={t.upToKm}
+                      onChange={e => {
+                        const val = Math.max(0.1, Number(e.target.value || 0));
+                        setDeliveryRates(s => {
+                          const n = [...s.tiers];
+                          n[idx] = { ...n[idx], upToKm: val };
+                          return { ...s, tiers: n };
+                        });
+                      }}
+                    />
+                    <span>km</span>
+                  </div>
+
+                  <div className="flex-1 flex items-center gap-2 text-sm justify-end">
+                    <span className="text-muted">Fee ₹</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="5"
+                      className="bg-[#111] border border-[#333] rounded-lg p-1 w-20 text-center"
+                      value={t.fee}
+                      onChange={e => {
+                        const val = Math.max(0, Number(e.target.value || 0));
+                        setDeliveryRates(s => {
+                          const n = [...s.tiers];
+                          n[idx] = { ...n[idx], fee: val };
+                          return { ...s, tiers: n };
+                        });
+                      }}
+                    />
+                    <button
+                      type="button"
+                      title="Delete tier"
+                      className="w-8 h-8 flex items-center justify-center rounded-lg bg-[#2a1a1a] text-error hover:bg-error hover:text-white transition"
+                      onClick={() => {
+                        setDeliveryRates(s => ({
+                          ...s,
+                          tiers: s.tiers.filter((_, i) => i !== idx)
+                        }));
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="border-t border-[#222] my-1" />
+
+          <div className="flex flex-col sm:flex-row gap-2 items-center">
+            <input
+              type="number"
+              min="0.5"
+              step="0.5"
+              className="bg-[#111] border border-[#222] rounded-xl p-2 w-full sm:flex-1 text-sm"
+              placeholder="Up to km (e.g. 15)"
+              value={newTierKm}
+              onChange={e => setNewTierKm(e.target.value)}
+            />
+            <input
+              type="number"
+              min="0"
+              step="5"
+              className="bg-[#111] border border-[#222] rounded-xl p-2 w-full sm:flex-1 text-sm"
+              placeholder="Fee in ₹ (e.g. 150)"
+              value={newTierFee}
+              onChange={e => setNewTierFee(e.target.value)}
+            />
+            <button
+              type="button"
+              className="btn w-full sm:w-auto"
+              onClick={() => {
+                const km = Number(newTierKm);
+                const fee = Number(newTierFee);
+                if (!km || km <= 0) { setMsg('Please enter a valid distance in km'); return; }
+                if (isNaN(fee) || fee < 0) { setMsg('Please enter a valid fee'); return; }
+                setDeliveryRates(s => {
+                  const updated = [...(s.tiers || []), { upToKm: km, fee }].sort((a, b) => a.upToKm - b.upToKm);
+                  const maxR = Math.max(s.maxRadius, km);
+                  return { ...s, maxRadius: maxR, tiers: updated };
+                });
+                setNewTierKm('');
+                setNewTierFee('');
+              }}
+            >
+              + Add Tier
+            </button>
+          </div>
+
+          <div className="flex gap-2 mt-2">
+            <button
+              type="button"
+              className="btn btn-primary flex-1"
+              disabled={savingDelivery}
+              onClick={async () => {
+                setSavingDelivery(true);
+                setMsg('');
+                try {
+                  const sortedTiers = (deliveryRates.tiers || []).slice().sort((a, b) => a.upToKm - b.upToKm);
+                  const r = await authedFetch(`${BACKEND_URL}/api/admin/set-delivery-rates`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      maxRadius: Number(deliveryRates.maxRadius),
+                      tiers: sortedTiers
+                    })
+                  });
+                  const d = await r.json();
+                  if (!r.ok || !d.ok) {
+                    setMsg('Failed to save delivery rates');
+                    return;
+                  }
+                  setMsg('Delivery rates and radius saved successfully');
+                  await refreshOverrides();
+                } catch {
+                  setMsg('Network error while saving delivery rates');
+                } finally {
+                  setSavingDelivery(false);
+                }
+              }}
+            >
+              {savingDelivery ? 'Saving…' : 'Save Delivery Rates'}
+            </button>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                setDeliveryRates(DEFAULT_DELIVERY_RATES);
+                setMsg('Restored default delivery rates (Click Save to apply)');
+              }}
+            >
+              Reset Defaults
+            </button>
           </div>
         </div>
       </div>

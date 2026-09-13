@@ -98,15 +98,51 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
     return R*c;
   }
 
+  const DEFAULT_DELIVERY_RATES = {
+    maxRadius: 10,
+    tiers: [
+      { upToKm: 5, fee: 60 },
+      { upToKm: 8, fee: 80 },
+      { upToKm: 10, fee: 120 }
+    ]
+  };
+  const [deliveryRates, setDeliveryRates] = useState(()=>{
+    try {
+      const cached = JSON.parse(localStorage.getItem("hc_menu_backend_overrides") || "{}");
+      if (cached?.deliveryRates?.tiers?.length) return cached.deliveryRates;
+    } catch {}
+    return DEFAULT_DELIVERY_RATES;
+  });
+
+  useEffect(()=>{
+    async function loadRates(){
+      try {
+        const r = await fetch(`${BACKEND_URL}/api/menu-overrides`);
+        const d = await r.json();
+        if(r.ok && d?.deliveryRates?.tiers?.length){
+          setDeliveryRates(d.deliveryRates);
+        }
+      } catch {}
+    }
+    loadRates();
+  },[]);
+
   function calculateDeliveryFee(){
     if(total===0) return 0;
-    if(distance==null) return 60;
+    const defaultFee = deliveryRates?.tiers?.[0]?.fee ?? 60;
+    if(distance==null) return defaultFee;
     const d = Number(distance);
-    if(d<=5) return 60;
-    if(d<=8) return 80;
-    if(d<=10) return 120;
+    const maxR = Number(deliveryRates?.maxRadius || deliveryRates?.tiers?.slice(-1)[0]?.upToKm || 10);
+    if(d > maxR) return null;
+    const tiers = (deliveryRates?.tiers || []).slice().sort((a,b) => a.upToKm - b.upToKm);
+    for(const tier of tiers){
+      if(d <= tier.upToKm) return tier.fee;
+    }
     return null;
   }
+
+  const maxRadius = Number(deliveryRates?.maxRadius || deliveryRates?.tiers?.slice(-1)[0]?.upToKm || 10);
+
 
   const discountedSubtotal = Math.max(0, Math.round(total * (1 - discountPct/100)));
   const gst = Math.round(discountedSubtotal*0.05);
@@ -136,7 +172,7 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
   async function payNow(){
     if(paying) return;
     if(!deliveryAvailable){
-      alert('We currently deliver within 10 km to ensure the best freshness and food quality.');
+      alert(`We currently deliver within ${maxRadius} km to ensure the best freshness and food quality.`);
       return;
     }
     if(!canOrder){
@@ -302,7 +338,7 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
           <input type="checkbox" className="w-4 h-4" checked={agree} onChange={e=>setAgree(e.target.checked)} />
           <span>I agree to the <a href="/terms" className="text-[#f5c84a] underline">Terms & Conditions</a></span>
         </label>
-        {!deliveryAvailable && <div className="text-error text-xs mb-2">We currently deliver within 10 km to ensure the best freshness and food quality.</div>}
+        {!deliveryAvailable && <div className="text-error text-xs mb-2">We currently deliver within {maxRadius} km to ensure the best freshness and food quality.</div>}
         {!canOrder && deliveryAvailable && <div className="text-error text-xs mb-2">Minimum order is ₹200 including delivery</div>}
         {!valid && <div className="text-error text-xs mb-2">Please fill in required details to pay</div>}
         <button className={`btn btn-primary w-full ${(!valid||paying||!deliveryAvailable)?'btn-disabled':''}`} onClick={payNow} disabled={!valid || paying || !deliveryAvailable}>{paying?'Starting…':`Pay ₹${grandTotal}`}</button>

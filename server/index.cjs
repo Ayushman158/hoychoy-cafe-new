@@ -606,6 +606,30 @@ app.post('/api/admin/set-availability', requireAdmin, (req,res)=>{
   res.json({ok:true});
 });
 
+app.post('/api/admin/set-delivery-rates', requireAdmin, (req,res)=>{
+  try{
+    const { maxRadius, tiers } = req.body || {};
+    if(!Array.isArray(tiers) || !tiers.length){
+      return res.status(400).json({error:'tiers-required'});
+    }
+    const cleanTiers = tiers.map(t => ({
+      upToKm: Math.max(0.1, Number(t.upToKm || 0)),
+      fee: Math.max(0, Number(t.fee || 0))
+    })).sort((a, b) => a.upToKm - b.upToKm);
+    
+    const maxR = Number(maxRadius) > 0 ? Number(maxRadius) : cleanTiers[cleanTiers.length - 1].upToKm;
+    
+    overrides.deliveryRates = {
+      maxRadius: maxR,
+      tiers: cleanTiers
+    };
+    saveOverrides(overrides);
+    res.json({ok:true, deliveryRates: overrides.deliveryRates});
+  }catch(e){
+    res.status(500).json({error:'server-error'});
+  }
+});
+
 
 app.get('/api/admin/coupons', requireAdmin, (req,res)=>{
   try{
