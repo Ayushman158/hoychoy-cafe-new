@@ -105,8 +105,6 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
     if(d<=5) return 60;
     if(d<=8) return 80;
     if(d<=10) return 120;
-    if(d<=12) return 150;
-    if(d<=15) return 180;
     return null;
   }
 
@@ -138,7 +136,7 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
   async function payNow(){
     if(paying) return;
     if(!deliveryAvailable){
-      alert('We currently deliver within 15 km to ensure the best freshness and food quality.');
+      alert('We currently deliver within 10 km to ensure the best freshness and food quality.');
       return;
     }
     if(!canOrder){
@@ -304,7 +302,7 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
           <input type="checkbox" className="w-4 h-4" checked={agree} onChange={e=>setAgree(e.target.checked)} />
           <span>I agree to the <a href="/terms" className="text-[#f5c84a] underline">Terms & Conditions</a></span>
         </label>
-        {!deliveryAvailable && <div className="text-error text-xs mb-2">We currently deliver within 15 km to ensure the best freshness and food quality.</div>}
+        {!deliveryAvailable && <div className="text-error text-xs mb-2">We currently deliver within 10 km to ensure the best freshness and food quality.</div>}
         {!canOrder && deliveryAvailable && <div className="text-error text-xs mb-2">Minimum order is ₹200 including delivery</div>}
         {!valid && <div className="text-error text-xs mb-2">Please fill in required details to pay</div>}
         <button className={`btn btn-primary w-full ${(!valid||paying||!deliveryAvailable)?'btn-disabled':''}`} onClick={payNow} disabled={!valid || paying || !deliveryAvailable}>{paying?'Starting…':`Pay ₹${grandTotal}`}</button>
