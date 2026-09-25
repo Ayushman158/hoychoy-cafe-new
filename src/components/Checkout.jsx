@@ -116,18 +116,30 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
     } catch {}
     return DEFAULT_DELIVERY_RATES;
   });
+  const [storeSettings, setStoreSettings] = useState(()=>{
+    try {
+      const cached = JSON.parse(localStorage.getItem("hc_menu_backend_overrides") || "{}");
+      return cached?.storeSettings || {};
+    } catch {}
+    return {};
+  });
 
   useEffect(()=>{
-    async function loadRates(){
+    async function loadRatesAndSettings(){
       try {
         const r = await fetch(`${BACKEND_URL}/api/menu-overrides`);
         const d = await r.json();
-        if(r.ok && d?.deliveryRates?.tiers?.length){
-          setDeliveryRates(d.deliveryRates);
+        if(r.ok){
+          if(d?.deliveryRates?.tiers?.length){
+            setDeliveryRates(d.deliveryRates);
+          }
+          if(d?.storeSettings){
+            setStoreSettings(d.storeSettings);
+          }
         }
       } catch {}
     }
-    loadRates();
+    loadRatesAndSettings();
   },[]);
 
   function calculateDeliveryFee(){
@@ -145,17 +157,18 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
   }
 
   const maxRadius = Number(deliveryRates?.maxRadius || deliveryRates?.tiers?.slice(-1)[0]?.upToKm || 10);
-
+  const packagingFee = Math.max(0, Number(storeSettings?.packagingFee || 0));
+  const minOrderRequired = Math.max(0, Number(storeSettings?.minOrderAmount !== undefined ? storeSettings.minOrderAmount : 200));
 
   const discountedSubtotal = Math.max(0, Math.round(total * (1 - discountPct/100)));
   const gst = Math.round(discountedSubtotal*0.05);
   const deliveryFee = calculateDeliveryFee();
   const deliveryAvailable = deliveryFee!=null;
-  const grandTotal = discountedSubtotal + gst + (deliveryAvailable?deliveryFee:0);
+  const grandTotal = discountedSubtotal + gst + (deliveryAvailable?deliveryFee:0) + packagingFee;
   const minCheckTotal = deliveryAvailable ? total + deliveryFee : 0;
-  const canOrder = deliveryAvailable && minCheckTotal >= 200;
+  const canOrder = deliveryAvailable && minCheckTotal >= minOrderRequired;
 
-  function submit(){onSubmit({name,phone,address,note,geo,manualLink:manualLink.trim(),total,items,gst,deliveryFee,grandTotal, coupon: coupon?.code||null, discountPct});}
+  function submit(){onSubmit({name,phone,address,note,geo,manualLink:manualLink.trim(),total,items,gst,deliveryFee,packagingFee,grandTotal, coupon: coupon?.code||null, discountPct});}
 
   async function applyCoupon(){
     try{
@@ -179,7 +192,7 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
       return;
     }
     if(!canOrder){
-      alert('Minimum order is ₹200. Please add more items before paying.');
+      alert(`Minimum order is ₹${minOrderRequired}. Please add more items before paying.`);
       return;
     }
     if(!valid){
@@ -191,7 +204,7 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
     const redirectUrl = `${window.location.origin}/?merchantTransactionId=${orderId}`;
     const callbackUrl = `${BACKEND_URL}/api/payment-callback`;
     const snapshotItems = items.map(({item,qty})=>({id:item.id,name:item.name,qty,price:item.price}));
-    const snapshot = { items: snapshotItems, customer:{name,phone,address,note,geo,manualLink:manualLink.trim()}, total, gst, deliveryFee, grandTotal };
+    const snapshot = { items: snapshotItems, customer:{name,phone,address,note,geo,manualLink:manualLink.trim()}, total, gst, deliveryFee, packagingFee, grandTotal };
     const resp = await fetch(`${BACKEND_URL}/api/initiate-payment`,{
       method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({amount:grandTotal, orderId, customerPhone:phone, customerName:name, redirectUrl, callbackUrl, snapshot})
@@ -299,6 +312,7 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
             {discountPct>0 && <div className="row"><span>Coupon ({discountPct}% off)</span><span className="price">-₹{Math.max(0, total - discountedSubtotal)}</span></div>}
             <div className="row"><span>GST (5%)</span><span className="price">₹{gst}</span></div>
             {total>0 && canOrder && <div className="row"><span>Delivery Fee</span><span className="price">₹{deliveryFee}</span></div>}
+            {packagingFee>0 && <div className="row"><span>Packaging Fee</span><span className="price">₹{packagingFee}</span></div>}
           </div>
         )}
       </div>
@@ -341,7 +355,7 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
           <span>I agree to the <a href="/terms" className="text-[#f5c84a] underline">Terms & Conditions</a></span>
         </label>
         {!deliveryAvailable && <div className="text-error text-xs mb-2">We currently deliver within {maxRadius} km to ensure the best freshness and food quality.</div>}
-        {!canOrder && deliveryAvailable && <div className="text-error text-xs mb-2">Minimum order is ₹200 including delivery</div>}
+        {!canOrder && deliveryAvailable && <div className="text-error text-xs mb-2">Minimum order is ₹{minOrderRequired} including delivery</div>}
         {!valid && <div className="text-error text-xs mb-2">Please fill in required details to pay</div>}
         <button className={`btn btn-primary w-full ${(!valid||paying||!deliveryAvailable)?'btn-disabled':''}`} onClick={payNow} disabled={!valid || paying || !deliveryAvailable}>{paying?'Starting…':`Pay ₹${grandTotal}`}</button>
         <div className="text-muted text-xs mt-2">You will be redirected to PhonePe to complete payment.</div>

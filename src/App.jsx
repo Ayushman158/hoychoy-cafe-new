@@ -115,8 +115,14 @@ export default function App(){
     lines.push("");
     lines.push(`🆔 *Order ID:* #${orderId}`);
     lines.push("---");
+    const storePhone = (()=>{
+      try {
+        const cached = JSON.parse(localStorage.getItem("hc_menu_backend_overrides") || "{}");
+        return cached?.storeSettings?.contactPhone || OWNER_PHONE;
+      } catch { return OWNER_PHONE; }
+    })();
     const msg = lines.join("\n");
-    const url = `https://api.whatsapp.com/send?phone=${OWNER_PHONE}&text=${encodeURIComponent(msg)}`;
+    const url = `https://api.whatsapp.com/send?phone=${storePhone}&text=${encodeURIComponent(msg)}`;
     window.location.href = url;
     setView("success");
     setCust(c=>({...c,orderId}));

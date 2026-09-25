@@ -301,8 +301,8 @@ function formatOrderWhatsApp(o){
 
 async function sendTelegram(text){
   try{
-    const tok = TELEGRAM_BOT_TOKEN;
-    const chat = TELEGRAM_ADMIN_CHAT_ID;
+    const tok = overrides?.storeSettings?.telegramBotToken || TELEGRAM_BOT_TOKEN;
+    const chat = overrides?.storeSettings?.telegramChatId || TELEGRAM_ADMIN_CHAT_ID;
     if(!tok||!chat) return {ok:false};
     const url = `https://api.telegram.org/bot${tok}/sendMessage`;
     const r = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:chat,text:String(text)})});
@@ -408,11 +408,22 @@ function fmtTGStatusChange(o, status){
   try{
     const pretty = String(status||o.status||'UPDATED').toUpperCase();
     const lines = [];
-    lines.push(`🔄 Order Status Updated`);
-    lines.push(`ID: ${o.id}`);
-    lines.push(`Status: ${pretty}`);
+    lines.push(`🔄 Order Status: ${pretty}`);
+    lines.push(`Order ID: #${o.id}`);
+    if(o.prepTime && pretty === 'ACCEPTED') lines.push(`⏱ Prep Time: ${o.prepTime}`);
+    if(o.cancelReason && pretty === 'CANCELLED') lines.push(`❌ Reason: ${o.cancelReason}`);
+    if(o.customer?.name) lines.push(`👤 Customer: ${o.customer.name} (${o.customer.phone||''})`);
+    if(o.customer?.address) lines.push(`📍 Address: ${o.customer.address}`);
+    if(o.total) lines.push(`💰 Total: ₹${o.total}`);
     return lines.join('\n');
   }catch{ return 'Order status updated'; }
+}
+
+function getMinOrderAmount(){
+  if(overrides?.storeSettings?.minOrderAmount !== undefined && overrides.storeSettings.minOrderAmount !== null){
+    return Number(overrides.storeSettings.minOrderAmount);
+  }
+  return MIN_ORDER_RUPEES;
 }
 
 function isWithinHours(){ const h=new Date().getHours(); return h>=12 && h<21; }
@@ -509,10 +520,37 @@ app.post('/api/admin/debug/send-telegram', requireAdmin, async (req,res)=>{
 
 app.get('/api/admin/debug/telegram-config', requireAdmin, (req,res)=>{
   try{
-    const hasToken = !!TELEGRAM_BOT_TOKEN;
-    const hasChat = !!TELEGRAM_ADMIN_CHAT_ID;
-    res.json({ok:true, TELEGRAM_BOT_TOKEN_set:hasToken, TELEGRAM_ADMIN_CHAT_ID_set:hasChat});
+    const currentToken = overrides?.storeSettings?.telegramBotToken || TELEGRAM_BOT_TOKEN;
+    const currentChat = overrides?.storeSettings?.telegramChatId || TELEGRAM_ADMIN_CHAT_ID;
+    const hasToken = !!currentToken;
+    const hasChat = !!currentChat;
+    res.json({
+      ok: true,
+      TELEGRAM_BOT_TOKEN_set: hasToken,
+      TELEGRAM_ADMIN_CHAT_ID_set: hasChat,
+      maskedToken: currentToken ? (currentToken.length > 8 ? currentToken.slice(0, 4) + '••••' + currentToken.slice(-4) : '••••') : '',
+      chatId: currentChat || ''
+    });
   }catch{ res.status(500).json({error:'server-error'}); }
+});
+
+app.post('/api/admin/debug/telegram-set-config', requireAdmin, (req,res)=>{
+  try{
+    const { botToken, chatId } = req.body||{};
+    overrides.storeSettings = overrides.storeSettings || {};
+    if(botToken !== undefined){
+      const t = String(botToken).trim();
+      if(t) overrides.storeSettings.telegramBotToken = t;
+      else delete overrides.storeSettings.telegramBotToken;
+    }
+    if(chatId !== undefined){
+      const c = String(chatId).trim();
+      if(c) overrides.storeSettings.telegramChatId = c;
+      else delete overrides.storeSettings.telegramChatId;
+    }
+    saveOverrides(overrides);
+    return res.json({ok:true, message:'Telegram settings saved successfully'});
+  }catch{ return res.status(500).json({error:'server-error'}); }
 });
 
 app.get('/api/menu-overrides', (req,res)=>{
@@ -520,6 +558,10 @@ app.get('/api/menu-overrides', (req,res)=>{
     res.set('Cache-Control', 'public, max-age=5, stale-while-revalidate=15');
     const safe = { ...(overrides || {}) };
     delete safe.adminPassword;
+    if(safe.storeSettings){
+      safe.storeSettings = { ...safe.storeSettings };
+      delete safe.storeSettings.telegramBotToken;
+    }
     res.json(safe);
   });
 });
@@ -721,6 +763,47 @@ app.post('/api/admin/coupon-set', requireAdmin, (req,res)=>{
     saveOverrides(overrides);
     res.json({ok:true, code:key, percent:p, enabled:!!enabled});
   }catch(e){ res.status(500).json({error:'server-error'}); }
+});
+
+app.post('/api/admin/coupon-delete', requireAdmin, (req,res)=>{
+  try{
+    const { code } = req.body||{};
+    if(!code) return res.status(400).json({error:'code-required'});
+    const key = String(code).trim().toUpperCase();
+    overrides.coupons = overrides.coupons || {};
+    if(overrides.coupons[key]){
+      delete overrides.coupons[key];
+      saveOverrides(overrides);
+    }
+    return res.json({ok:true, code:key, coupons: overrides.coupons});
+  }catch(e){ res.status(500).json({error:'server-error'}); }
+});
+
+app.get('/api/admin/store-settings', requireAdmin, (req,res)=>{
+  try{
+    overrides.storeSettings = overrides.storeSettings || {};
+    const safeSettings = { ...overrides.storeSettings };
+    delete safeSettings.telegramBotToken;
+    return res.json({ok:true, storeSettings: safeSettings});
+  }catch(e){ res.status(500).json({error:'server-error'}); }
+});
+
+app.post('/api/admin/store-settings', requireAdmin, (req,res)=>{
+  try{
+    const { contactPhone, upiId, merchantName, minOrderAmount, packagingFee } = req.body||{};
+    overrides.storeSettings = overrides.storeSettings || {};
+
+    if(contactPhone !== undefined) overrides.storeSettings.contactPhone = String(contactPhone).replace(/[^0-9]/g, '');
+    if(upiId !== undefined) overrides.storeSettings.upiId = String(upiId).trim();
+    if(merchantName !== undefined) overrides.storeSettings.merchantName = String(merchantName).trim();
+    if(minOrderAmount !== undefined) overrides.storeSettings.minOrderAmount = Math.max(0, Number(minOrderAmount||0));
+    if(packagingFee !== undefined) overrides.storeSettings.packagingFee = Math.max(0, Number(packagingFee||0));
+
+    saveOverrides(overrides);
+    return res.json({ok:true, storeSettings: overrides.storeSettings});
+  }catch(e){
+    return res.status(500).json({error:'server-error', message:e.message});
+  }
 });
 
 app.get('/api/coupon/:code', (req,res)=>{
@@ -1014,6 +1097,19 @@ app.post('/api/admin/restore-item', requireAdmin, (req,res)=>{
   res.json({ok:true, overrides});
 });
 
+app.post('/api/admin/reset-menu', requireAdmin, (req,res)=>{
+  try{
+    overrides.added = [];
+    overrides.edited = {};
+    overrides.removed = [];
+    overrides.images = {};
+    saveOverrides(overrides);
+    return res.json({ok:true, message:'Menu customizations reset to defaults', overrides});
+  }catch(e){
+    return res.status(500).json({error:'server-error'});
+  }
+});
+
 function parseCoordsFromUrl(u){
   try{
     const q=u.searchParams.get('q')||u.searchParams.get('ll')||u.searchParams.get('query');
@@ -1061,7 +1157,8 @@ app.post('/api/initiate-payment', async (req,res)=>{
   try{
     const { amount, orderId, customerPhone, customerName, expireAfter, snapshot } = req.body;
     if(!amount || !orderId) return res.status(400).json({error:'amount and orderId required'});
-    if(Number(amount) < MIN_ORDER_RUPEES) return res.status(400).json({error:'min-order-amount', min:MIN_ORDER_RUPEES});
+    const minAmt = getMinOrderAmount();
+    if(Number(amount) < minAmt) return res.status(400).json({error:'min-order-amount', min:minAmt});
     const client = getSdkClient();
     if(!client) return res.status(500).json({error:'sdk-not-configured'});
     const paisa = Math.round(Number(amount)*100);
@@ -1186,7 +1283,8 @@ app.post('/api/create-sdk-order', async (req,res)=>{
   try{
     const { amount, orderId } = req.body||{};
     if(!amount || !orderId) return res.status(400).json({error:'missing-fields'});
-    if(Number(amount) < MIN_ORDER_RUPEES) return res.status(400).json({error:'min-order-amount', min:MIN_ORDER_RUPEES});
+    const minAmt = getMinOrderAmount();
+    if(Number(amount) < minAmt) return res.status(400).json({error:'min-order-amount', min:minAmt});
     const client = getSdkClient();
     if(!client) return res.status(500).json({error:'sdk-not-configured'});
     const paisa = Math.round(Number(amount)*100);
@@ -1467,6 +1565,47 @@ app.post('/api/admin/order-accept', requireAdmin, (req,res)=>{
     return res.json({ok:true, order:orders[idx]});
   }catch(e){
     return res.status(500).json({error:'server-error'});
+  }
+});
+
+app.post('/api/admin/order-update-status', requireAdmin, (req,res)=>{
+  try{
+    const { id, status, prepTime, cancelReason } = req.body||{};
+    if(!id || !status) return res.status(400).json({error:'id and status required'});
+    const idx = orders.findIndex(o=>String(o.id)===String(id));
+    if(idx<0) return res.status(404).json({error:'order-not-found'});
+
+    const upperStatus = String(status).toUpperCase();
+    const updated = {
+      ...orders[idx],
+      status: upperStatus,
+      statusUpdatedAt: Date.now()
+    };
+
+    if(upperStatus === 'ACCEPTED'){
+      updated.acceptedAt = Date.now();
+      if(prepTime) updated.prepTime = String(prepTime);
+    } else if(upperStatus === 'DELIVERED'){
+      updated.deliveredAt = Date.now();
+    } else if(upperStatus === 'OUT_FOR_DELIVERY'){
+      updated.outForDeliveryAt = Date.now();
+    } else if(upperStatus === 'CANCELLED'){
+      updated.cancelledAt = Date.now();
+      if(cancelReason) updated.cancelReason = String(cancelReason);
+    }
+
+    orders[idx] = updated;
+
+    try{
+      sendTelegram(fmtTGStatusChange(updated, upperStatus)).catch(()=>{});
+    }catch{}
+
+    const payload = `data: ${JSON.stringify({type:'order.updated', order:updated})}\n\n`;
+    orderClients.forEach((client)=>{ try{ client.write(payload); }catch{} });
+
+    return res.json({ok:true, order:updated});
+  }catch(e){
+    return res.status(500).json({error:'server-error', message:e.message});
   }
 });
 

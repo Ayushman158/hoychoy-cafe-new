@@ -18,8 +18,14 @@ export default function Reservation({onBack}){
 
   function submit(e){
     e.preventDefault();
+    const storePhone = (()=>{
+      try {
+        const cached = JSON.parse(localStorage.getItem("hc_menu_backend_overrides") || "{}");
+        return cached?.storeSettings?.contactPhone || OWNER_PHONE;
+      } catch { return OWNER_PHONE; }
+    })();
     const msg = `Reservation enquiry\nName: ${name}\nPhone: ${phone}\nDate: ${date}\nTime: ${time}\nGuests: ${guests}\nEvent: ${event}\nNotes: ${notes}`;
-    const url = `https://api.whatsapp.com/send?phone=${OWNER_PHONE}&text=${encodeURIComponent(msg)}`;
+    const url = `https://api.whatsapp.com/send?phone=${storePhone}&text=${encodeURIComponent(msg)}`;
     window.location.href = url;
   }
 

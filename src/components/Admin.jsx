@@ -93,6 +93,31 @@ export default function Admin(){
   const [customDate,setCustomDate]=useState('');
   const [customTime,setCustomTime]=useState('');
   const [orderFilter,setOrderFilter]=useState('ALL');
+  const [orderSearch,setOrderSearch]=useState('');
+  const [soundAlerts,setSoundAlerts]=useState(()=>{
+    try{ return localStorage.getItem('hc_sound_alerts') !== 'false'; }catch{ return true; }
+  });
+  useEffect(()=>{
+    try{ localStorage.setItem('hc_sound_alerts', String(soundAlerts)); }catch{}
+  },[soundAlerts]);
+
+  // Store & Contact Settings state
+  const [storePhone, setStorePhone] = useState(OWNER_PHONE);
+  const [storeUpi, setStoreUpi] = useState("ayushman15899-4@okaxis");
+  const [storeMerchantName, setStoreMerchantName] = useState("HoyChoy Café");
+  const [storeMinOrder, setStoreMinOrder] = useState("200");
+  const [storePackagingFee, setStorePackagingFee] = useState("0");
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [settingsMsg, setSettingsMsg] = useState("");
+
+  // Telegram Alert Settings state
+  const [tgBotToken, setTgBotToken] = useState("");
+  const [tgChatId, setTgChatId] = useState("");
+  const [tgConfig, setTgConfig] = useState(null);
+  const [tgLoading, setTgLoading] = useState(false);
+  const [tgMsg, setTgMsg] = useState("");
+  const [tgTesting, setTgTesting] = useState(false);
+
   const [waTemplate,setWaTemplate]=useState('Your order has been placed. We will deliver within 15 minutes.');
   const [waCustom,setWaCustom]=useState('');
   const [coupons,setCoupons]=useState({});
@@ -144,10 +169,25 @@ export default function Admin(){
     }catch{}
   }
   const filteredOrders = useMemo(()=>{
-    if(orderFilter==='DELIVERED') return (orders||[]).filter(o=>o.status==='DELIVERED');
-    if(orderFilter==='NEW') return (orders||[]).filter(o=>o.status!=='DELIVERED');
-    return orders||[];
-  },[orders,orderFilter]);
+    let list = orders || [];
+    if(orderFilter==='DELIVERED') list = list.filter(o=>o.status==='DELIVERED');
+    else if(orderFilter==='NEW') list = list.filter(o=>!o.status || o.status==='NEW' || o.status==='PENDING' || o.status==='PAID');
+    else if(orderFilter==='ACCEPTED') list = list.filter(o=>o.status==='ACCEPTED' || o.status==='PREPARING');
+    else if(orderFilter==='OUT_FOR_DELIVERY') list = list.filter(o=>o.status==='OUT_FOR_DELIVERY');
+    else if(orderFilter==='CANCELLED') list = list.filter(o=>o.status==='CANCELLED');
+
+    if(orderSearch.trim()){
+      const q = orderSearch.trim().toLowerCase();
+      list = list.filter(o => {
+        const idMatch = String(o.id || '').toLowerCase().includes(q);
+        const nameMatch = String(o.customer?.name || '').toLowerCase().includes(q);
+        const phoneMatch = String(o.customer?.phone || '').toLowerCase().includes(q);
+        const addrMatch = String(o.customer?.address || '').toLowerCase().includes(q);
+        return idMatch || nameMatch || phoneMatch || addrMatch;
+      });
+    }
+    return list;
+  },[orders,orderFilter,orderSearch]);
   const untilLabel = useMemo(()=>{
     try{
       const cu = Number(status.closedUntil||0);
@@ -204,7 +244,10 @@ export default function Admin(){
           try{
             const d = JSON.parse(ev.data||'{}');
             if(d.type==='init' && Array.isArray(d.orders)) setOrders(d.orders);
-            if(d.type==='order.created' && d.order) setOrders((prev)=>[d.order, ...prev]);
+            if(d.type==='order.created' && d.order){
+              setOrders((prev)=>[d.order, ...prev]);
+              if(soundAlerts) playAlertTone();
+            }
             if(d.type==='order.updated' && d.order){
               setOrders((prev)=>prev.map(x=>x.id===d.order.id?d.order:x));
               if(d.order.status==='PAID'){
@@ -214,10 +257,10 @@ export default function Admin(){
                   setNotifiedIds(prev=>[...prev, info.id]);
                   setNotifs(prev=>[{title:'New paid order', body:`#${info.id} • ₹${info.total}`, ts:info.ts}, ...prev].slice(0,20));
                   setUnread(u=>{ const nu=(u+1); updateAppBadge(nu); return nu; });
-                showSwNotification('New paid order', `#${info.id} • ₹${info.total}`);
-                playAlertTone();
+                  showSwNotification('New paid order', `#${info.id} • ₹${info.total}`);
+                  if(soundAlerts) playAlertTone();
+                }
               }
-            }
             }
           }catch{}
         };
@@ -260,6 +303,13 @@ export default function Admin(){
         setClosingMessage(String(d.closingMessage||""));
         if(d.deliveryRates && Array.isArray(d.deliveryRates.tiers)){
           setDeliveryRates(d.deliveryRates);
+        }
+        if(d.storeSettings){
+          if(d.storeSettings.contactPhone) setStorePhone(d.storeSettings.contactPhone);
+          if(d.storeSettings.upiId) setStoreUpi(d.storeSettings.upiId);
+          if(d.storeSettings.merchantName) setStoreMerchantName(d.storeSettings.merchantName);
+          if(d.storeSettings.minOrderAmount !== undefined) setStoreMinOrder(String(d.storeSettings.minOrderAmount));
+          if(d.storeSettings.packagingFee !== undefined) setStorePackagingFee(String(d.storeSettings.packagingFee));
         }
         setOverrides(d||{});
         setItems(getMenu(d).items||[]);
@@ -685,6 +735,253 @@ export default function Admin(){
     setPwdLoading(false);
   }
 
+  async function loadTelegramConfig(){
+    try{
+      const r = await authedFetch(`${BACKEND_URL}/api/admin/debug/telegram-config`);
+      const d = await r.json();
+      if(r.ok && d.ok){
+        setTgConfig(d);
+        if(d.chatId && !tgChatId) setTgChatId(d.chatId);
+      }
+    }catch{}
+  }
+
+  useEffect(()=>{
+    if(authed && token){
+      loadTelegramConfig();
+    }
+  },[authed, token]);
+
+  async function saveTelegramConfig(e){
+    e && e.preventDefault && e.preventDefault();
+    setTgLoading(true);
+    setTgMsg("");
+    try{
+      const body = { chatId: tgChatId };
+      if(tgBotToken.trim()) body.botToken = tgBotToken.trim();
+      const r = await authedFetch(`${BACKEND_URL}/api/admin/debug/telegram-set-config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const d = await r.json();
+      if(!r.ok || !d.ok){
+        setTgMsg("Failed to update Telegram settings");
+        setTgLoading(false);
+        return;
+      }
+      setTgBotToken("");
+      await loadTelegramConfig();
+      setTgMsg("Telegram configuration updated successfully!");
+    }catch{
+      setTgMsg("Network error updating Telegram configuration");
+    }
+    setTgLoading(false);
+  }
+
+  async function testTelegram(){
+    setTgTesting(true);
+    setTgMsg("");
+    try{
+      const r = await authedFetch(`${BACKEND_URL}/api/admin/debug/send-telegram`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: "Test alert from HoyChoy Cafe Admin Panel. Everything is working correctly!" })
+      });
+      const d = await r.json();
+      if(r.ok && d.ok){
+        setTgMsg("Test message delivered to Telegram!");
+      }else{
+        setTgMsg("Failed to send test message. Check your Bot Token and Chat ID.");
+      }
+    }catch{
+      setTgMsg("Network error sending test Telegram alert");
+    }
+    setTgTesting(false);
+  }
+
+  async function saveStoreSettings(e){
+    e && e.preventDefault && e.preventDefault();
+    setSavingSettings(true);
+    setSettingsMsg("");
+    try{
+      const r = await authedFetch(`${BACKEND_URL}/api/admin/store-settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contactPhone: storePhone,
+          upiId: storeUpi,
+          merchantName: storeMerchantName,
+          minOrderAmount: Number(storeMinOrder || 0),
+          packagingFee: Number(storePackagingFee || 0)
+        })
+      });
+      const d = await r.json();
+      if(!r.ok || !d.ok){
+        setSettingsMsg("Failed to save store settings");
+        setSavingSettings(false);
+        return;
+      }
+      await refreshOverrides();
+      setSettingsMsg("Store settings updated successfully!");
+      setMsg("Store settings saved!");
+    }catch{
+      setSettingsMsg("Network error saving store settings");
+    }
+    setSavingSettings(false);
+  }
+
+  async function deleteCoupon(code){
+    if(!confirm(`Delete coupon "${code}"?`)) return;
+    setMsg("");
+    try{
+      const r = await authedFetch(`${BACKEND_URL}/api/admin/coupon-delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code })
+      });
+      const d = await r.json();
+      if(!r.ok || !d.ok){ setMsg("Failed to delete coupon"); return; }
+      await refreshCoupons();
+      setMsg(`Coupon "${code}" deleted successfully`);
+    }catch{
+      setMsg("Network error deleting coupon");
+    }
+  }
+
+  async function toggleCoupon(code, currentEnabled, currentPercent){
+    setMsg("");
+    try{
+      const r = await authedFetch(`${BACKEND_URL}/api/admin/coupon-set`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, percent: currentPercent, enabled: !currentEnabled })
+      });
+      const d = await r.json();
+      if(!r.ok || !d.ok){ setMsg("Failed to update coupon"); return; }
+      await refreshCoupons();
+      setMsg(`Coupon "${code}" ${!currentEnabled ? 'enabled' : 'disabled'}`);
+    }catch{
+      setMsg("Network error updating coupon");
+    }
+  }
+
+  async function resetMenuToDefaults(){
+    if(!confirm("Are you sure you want to reset all menu customizations? All custom dishes, edits, and price overrides will revert to factory defaults.")) return;
+    setMsg("");
+    try{
+      const r = await authedFetch(`${BACKEND_URL}/api/admin/reset-menu`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const d = await r.json();
+      if(!r.ok || !d.ok){ setMsg("Failed to reset menu"); return; }
+      await refreshOverrides();
+      setMsg("Menu reset to factory defaults!");
+    }catch{
+      setMsg("Network error resetting menu");
+    }
+  }
+
+  async function updateOrderStatus(id, newStatus, prepTime, cancelReason){
+    setMsg("");
+    try{
+      const body = { id, status: newStatus };
+      if(prepTime) body.prepTime = prepTime;
+      if(cancelReason) body.cancelReason = cancelReason;
+      const r = await authedFetch(`${BACKEND_URL}/api/admin/order-update-status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const d = await r.json();
+      if(!r.ok || !d.ok){ setMsg("Failed to update order status"); return; }
+      setOrders(prev => prev.map(x => x.id === id ? d.order : x));
+      if(selected && selected.id === id){
+        setSelected(d.order);
+      }
+      setMsg(`Order #${id} marked as ${newStatus}`);
+    }catch{
+      setMsg("Network error updating order status");
+    }
+  }
+
+  function printOrderReceipt(o){
+    if(!o) return;
+    const w = window.open('', '_blank', 'width=600,height=700');
+    if(!w) { alert('Popup blocked. Please allow popups to print receipt.'); return; }
+    const itemsHtml = (o.items||[]).map(it => `
+      <tr>
+        <td style="padding:6px 0; border-bottom:1px dashed #ddd;">${it.item?.name || 'Item'}</td>
+        <td style="padding:6px 0; text-align:center; border-bottom:1px dashed #ddd;">×${it.qty}</td>
+        <td style="padding:6px 0; text-align:right; border-bottom:1px dashed #ddd;">₹${Number(it.item?.price||0) * it.qty}</td>
+      </tr>
+    `).join('');
+    
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Order Receipt #${o.id}</title>
+        <style>
+          body { font-family: monospace, -apple-system, sans-serif; padding: 20px; max-width: 380px; margin: 0 auto; color: #000; font-size: 13px; line-height: 1.4; }
+          .center { text-align: center; }
+          .bold { font-weight: bold; }
+          .divider { border-top: 1px dashed #000; margin: 12px 0; }
+          .flex { display: flex; justify-content: space-between; }
+          table { width: 100%; border-collapse: collapse; }
+          @media print {
+            body { padding: 0; }
+            @page { margin: 10mm; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="center bold" style="font-size: 18px; letter-spacing: 1px;">HOYCHOY CAFÉ</div>
+        <div class="center" style="font-size: 11px; color: #444; margin-top: 2px;">KITCHEN ORDER TICKET & BILL</div>
+        <div class="divider"></div>
+        <div class="flex"><span>Order ID:</span><span class="bold">#${o.id}</span></div>
+        <div class="flex"><span>Date:</span><span>${new Date(o.createdAt || Date.now()).toLocaleString()}</span></div>
+        <div class="flex"><span>Status:</span><span class="bold">${o.status || 'PAID'}</span></div>
+        ${o.prepTime ? `<div class="flex"><span>Prep Time:</span><span class="bold">${o.prepTime}</span></div>` : ''}
+        <div class="divider"></div>
+        <div><span class="bold">Customer:</span> ${o.customer?.name || 'Guest'}</div>
+        <div><span class="bold">Phone:</span> ${o.customer?.phone || 'N/A'}</div>
+        <div><span class="bold">Address:</span> ${o.customer?.address || 'N/A'}</div>
+        ${o.customer?.note ? `<div style="margin-top:4px;"><span class="bold">Note:</span> <i>${o.customer.note}</i></div>` : ''}
+        <div class="divider"></div>
+        <table>
+          <thead>
+            <tr style="border-bottom:1px solid #000; text-align:left;">
+              <th>Item</th>
+              <th style="text-align:center;">Qty</th>
+              <th style="text-align:right;">Amt</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${itemsHtml}
+          </tbody>
+        </table>
+        <div class="divider"></div>
+        <div class="flex"><span>Subtotal:</span><span>₹${o.total || 0}</span></div>
+        ${o.gst ? `<div class="flex"><span>GST:</span><span>₹${o.gst}</span></div>` : ''}
+        ${o.deliveryFee ? `<div class="flex"><span>Delivery Fee:</span><span>₹${o.deliveryFee}</span></div>` : ''}
+        ${o.packagingFee ? `<div class="flex"><span>Packaging Fee:</span><span>₹${o.packagingFee}</span></div>` : ''}
+        <div class="divider"></div>
+        <div class="flex bold" style="font-size: 15px;"><span>GRAND TOTAL:</span><span>₹${o.grandTotal || o.total || 0}</span></div>
+        <div class="divider"></div>
+        <div class="center" style="font-size: 11px; color: #555;">Thank you for ordering with HoyChoy Café!</div>
+        <script>
+          window.onload = function() { window.print(); };
+        </script>
+      </body>
+      </html>
+    `;
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+  }
+
   return (
     <section className="max-w-[900px] mx-auto px-4 pt-[calc(env(safe-area-inset-top)+8px)] pb-[calc(env(safe-area-inset-bottom)+12px)] md:pt-0 overflow-x-hidden">
       <div className="hc-safe-buffer"></div>
@@ -924,37 +1221,63 @@ export default function Admin(){
         <div className="grid grid-cols-1 gap-2">
           <div className="row">
             <span>Existing Coupons</span>
-            <span className="text-sm">{Object.keys(coupons||{}).length||0}</span>
+            <span className="text-sm font-semibold">{Object.keys(coupons||{}).length||0}</span>
           </div>
-          <ul className="flex flex-col gap-2 max-h-[200px] overflow-auto">
-            {Object.entries(coupons||{}).map(([code,info])=> (
-              <li key={code} className="row">
-                <span>{code}</span>
-                <span className="flex items-center gap-2 text-sm">
-                  <span>{info.percent}%</span>
-                  <span className={`inline-block w-2 h-2 rounded-full ${info.enabled?'bg-success':'bg-error'}`}></span>
-                </span>
-              </li>
-            ))}
+          <ul className="flex flex-col gap-2 max-h-[220px] overflow-auto">
+            {Object.keys(coupons||{}).length === 0 ? (
+              <li className="text-xs text-muted py-2">No coupons configured. Add one below.</li>
+            ) : (
+              Object.entries(coupons||{}).map(([code,info])=> (
+                <li key={code} className="row bg-[#111] p-2 rounded-xl border border-[#222]">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono font-bold text-[#f5c84a]">{code}</span>
+                    <span className="text-xs bg-[#222] px-2 py-0.5 rounded text-white">{info.percent}% OFF</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className={`text-xs px-2.5 py-1 rounded-lg border transition ${info.enabled ? 'border-success text-success hover:bg-success/10' : 'border-error text-error hover:bg-error/10'}`}
+                      onClick={()=>toggleCoupon(code, !!info.enabled, Number(info.percent||0))}
+                      title="Click to toggle status"
+                    >
+                      {info.enabled ? 'Active' : 'Disabled'}
+                    </button>
+                    <button
+                      type="button"
+                      className="text-xs px-2.5 py-1 rounded-lg bg-[#222] text-[#ff8aa0] hover:bg-[#333]"
+                      onClick={()=>deleteCoupon(code)}
+                      title="Delete coupon"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </li>
+              ))
+            )}
           </ul>
           <div className="border-t border-[#222] my-2"/>
+          <div className="text-xs font-semibold text-muted">Create or Edit Coupon</div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <input className="bg-[#111] border border-[#222] rounded-xl p-2" placeholder="Code" value={newCode} onChange={e=>setNewCode(e.target.value)} />
-            <input className="bg-[#111] border border-[#222] rounded-xl p-2" placeholder="Percent" value={newPercent} onChange={e=>setNewPercent(e.target.value)} />
+            <input className="bg-[#111] border border-[#222] rounded-xl p-2 font-mono uppercase" placeholder="Code (e.g. SAVE20)" value={newCode} onChange={e=>setNewCode(e.target.value.toUpperCase())} />
+            <input className="bg-[#111] border border-[#222] rounded-xl p-2" type="number" min="1" max="100" placeholder="Discount % (e.g. 20)" value={newPercent} onChange={e=>setNewPercent(e.target.value)} />
             <select className="bg-[#111] border border-[#222] rounded-xl p-2" value={newEnabled?'enabled':'disabled'} onChange={e=>setNewEnabled(e.target.value==='enabled')}>
-              <option value="enabled">Enabled</option>
+              <option value="enabled">Enabled (Active)</option>
               <option value="disabled">Disabled</option>
             </select>
           </div>
           <div className="flex gap-2">
             <button className="btn btn-primary" type="button" onClick={async()=>{
               setMsg('');
+              const c = newCode.trim().toUpperCase();
+              const p = Number(newPercent||0);
+              if(!c){ setMsg('Please enter a coupon code'); return; }
+              if(isNaN(p) || p <= 0 || p > 100){ setMsg('Please enter a valid percentage (1-100)'); return; }
               try{
-                const r=await authedFetch(`${BACKEND_URL}/api/admin/coupon-set`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:newCode, percent:Number(newPercent||0), enabled:newEnabled})});
+                const r=await authedFetch(`${BACKEND_URL}/api/admin/coupon-set`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:c, percent:p, enabled:newEnabled})});
                 const d=await r.json();
                 if(!r.ok || !d.ok){ setMsg('Failed to save coupon'); return; }
-                setMsg('Coupon saved'); setNewCode(''); setNewPercent(''); setNewEnabled(true); await refreshCoupons();
-              }catch{ setMsg('Network error'); }
+                setMsg(`Coupon "${c}" saved successfully!`); setNewCode(''); setNewPercent(''); setNewEnabled(true); await refreshCoupons();
+              }catch{ setMsg('Network error saving coupon'); }
             }}>Save Coupon</button>
             <button className="btn" type="button" onClick={()=>{ setNewCode(''); setNewPercent(''); setNewEnabled(true); }}>Clear</button>
             <button className="btn" type="button" onClick={refreshCoupons}>Refresh</button>
@@ -1138,6 +1461,173 @@ export default function Admin(){
         </div>
       </div>
       )}
+
+      {authed && (
+      <div className="card mt-3">
+        <div className="section-title">Store & Contact Settings</div>
+        <div className="text-muted text-xs mb-3">Configure WhatsApp order notification phone, UPI payment address, minimum order value, and packaging fee.</div>
+        
+        {settingsMsg && (
+          <div className={`p-2.5 rounded-xl text-xs mb-3 font-medium ${settingsMsg.includes('Failed')||settingsMsg.includes('error') ? 'bg-error/15 text-error border border-error/30' : 'bg-success/15 text-success border border-success/30'}`}>
+            {settingsMsg}
+          </div>
+        )}
+
+        <form onSubmit={saveStoreSettings} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-muted">WhatsApp Contact Phone *</label>
+            <input
+              className="bg-[#111] border border-[#222] rounded-xl p-2 text-sm"
+              placeholder="e.g. 918638864806"
+              value={storePhone}
+              onChange={e => setStorePhone(e.target.value)}
+              required
+            />
+            <span className="text-[11px] text-muted">Include country code without + (e.g. 91...)</span>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-muted">UPI ID / VPA *</label>
+            <input
+              className="bg-[#111] border border-[#222] rounded-xl p-2 text-sm"
+              placeholder="e.g. ayushman15899-4@okaxis"
+              value={storeUpi}
+              onChange={e => setStoreUpi(e.target.value)}
+              required
+            />
+            <span className="text-[11px] text-muted">VPA for receiving customer UPI payments</span>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-muted">Merchant / Cafe Name *</label>
+            <input
+              className="bg-[#111] border border-[#222] rounded-xl p-2 text-sm"
+              placeholder="e.g. HoyChoy Café"
+              value={storeMerchantName}
+              onChange={e => setStoreMerchantName(e.target.value)}
+              required
+            />
+            <span className="text-[11px] text-muted">Displayed on receipts and payment intents</span>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-muted">Minimum Order Amount (₹)</label>
+            <input
+              type="number"
+              min="0"
+              className="bg-[#111] border border-[#222] rounded-xl p-2 text-sm"
+              placeholder="e.g. 200"
+              value={storeMinOrder}
+              onChange={e => setStoreMinOrder(e.target.value)}
+            />
+            <span className="text-[11px] text-muted">Set to 0 to disable minimum order restriction</span>
+          </div>
+
+          <div className="flex flex-col gap-1 sm:col-span-2">
+            <label className="text-xs font-semibold text-muted">Packaging / Container Fee (₹)</label>
+            <input
+              type="number"
+              min="0"
+              className="bg-[#111] border border-[#222] rounded-xl p-2 text-sm max-w-xs"
+              placeholder="e.g. 10"
+              value={storePackagingFee}
+              onChange={e => setStorePackagingFee(e.target.value)}
+            />
+            <span className="text-[11px] text-muted">Added to delivery orders for food containers/bags (₹0 if none)</span>
+          </div>
+
+          <div className="sm:col-span-2 flex gap-2 mt-1">
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={savingSettings}
+            >
+              {savingSettings ? 'Saving Settings…' : 'Save Store Settings'}
+            </button>
+            <button
+              type="button"
+              className="btn"
+              onClick={refreshOverrides}
+            >
+              Reload
+            </button>
+          </div>
+        </form>
+      </div>
+      )}
+
+      {authed && (
+      <div className="card mt-3">
+        <div className="section-title flex items-center justify-between">
+          <span>Telegram Alerts & Notifications</span>
+          <div className="flex items-center gap-1.5 text-xs">
+            <span className={`w-2.5 h-2.5 rounded-full ${tgConfig?.TELEGRAM_BOT_TOKEN_set && tgConfig?.TELEGRAM_ADMIN_CHAT_ID_set ? 'bg-success' : 'bg-[#f5c84a]'}`}></span>
+            <span className="text-muted">
+              {tgConfig?.TELEGRAM_BOT_TOKEN_set && tgConfig?.TELEGRAM_ADMIN_CHAT_ID_set ? 'Connected' : 'Setup Required'}
+            </span>
+          </div>
+        </div>
+        <div className="text-muted text-xs mb-3">Receive real-time alerts on your Telegram account or staff group whenever an order is placed, updated, or paid.</div>
+
+        {tgMsg && (
+          <div className={`p-2.5 rounded-xl text-xs mb-3 font-medium ${tgMsg.includes('Failed')||tgMsg.includes('error') ? 'bg-error/15 text-error border border-error/30' : 'bg-success/15 text-success border border-success/30'}`}>
+            {tgMsg}
+          </div>
+        )}
+
+        <form onSubmit={saveTelegramConfig} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-muted">Telegram Bot Token</label>
+            <input
+              type="password"
+              className="bg-[#111] border border-[#222] rounded-xl p-2 text-sm font-mono"
+              placeholder={tgConfig?.maskedToken ? `Active: ${tgConfig.maskedToken}` : 'Paste bot token from @BotFather'}
+              value={tgBotToken}
+              onChange={e => setTgBotToken(e.target.value)}
+            />
+            <span className="text-[11px] text-muted">{tgConfig?.TELEGRAM_BOT_TOKEN_set ? '✓ Token configured (leave blank to keep current)' : 'Not set yet'}</span>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-muted">Telegram Admin / Group Chat ID</label>
+            <input
+              type="text"
+              className="bg-[#111] border border-[#222] rounded-xl p-2 text-sm font-mono"
+              placeholder="e.g. 123456789 or -100123456789"
+              value={tgChatId}
+              onChange={e => setTgChatId(e.target.value)}
+            />
+            <span className="text-[11px] text-muted">{tgConfig?.TELEGRAM_ADMIN_CHAT_ID_set ? '✓ Chat ID configured' : 'Your Telegram user ID or group chat ID'}</span>
+          </div>
+
+          <div className="sm:col-span-2 flex flex-wrap gap-2 mt-1">
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={tgLoading}
+            >
+              {tgLoading ? 'Saving…' : 'Save Telegram Config'}
+            </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={tgTesting || (!tgConfig?.TELEGRAM_BOT_TOKEN_set && !tgBotToken)}
+              onClick={testTelegram}
+            >
+              {tgTesting ? 'Sending…' : 'Send Test Notification'}
+            </button>
+            <button
+              type="button"
+              className="btn"
+              onClick={loadTelegramConfig}
+            >
+              Refresh
+            </button>
+          </div>
+        </form>
+      </div>
+      )}
+
       {authed && (
       <div className="card mt-3">
         <div className="section-title flex flex-wrap items-center justify-between gap-2">
@@ -1314,6 +1804,15 @@ export default function Admin(){
               title="Download empty sample template CSV"
             >
               Sample Template
+            </button>
+
+            <button
+              type="button"
+              className="text-[11px] text-[#ff8aa0] hover:underline px-1 py-1 ml-1"
+              onClick={resetMenuToDefaults}
+              title="Reset all menu additions, deletions, and price customizations back to default factory menu"
+            >
+              Reset Menu to Defaults
             </button>
           </div>
         </div>
@@ -1698,81 +2197,262 @@ export default function Admin(){
 
       {authed && (
         <div className="card mt-3">
-        <div className="section-title flex items-center justify-between">
-          <span>Orders</span>
-          <div className="flex items-center gap-2">
-            <select className="bg-[#111] border border-[#222] rounded-xl p-1 text-xs" value={orderFilter} onChange={e=>setOrderFilter(e.target.value)}>
-              <option value="ALL">All</option>
-              <option value="NEW">New</option>
-              <option value="DELIVERED">Delivered</option>
-            </select>
-            <button className="btn" onClick={exportCsv}>Export CSV</button>
-            <button className="btn" onClick={clearAll}>Clear All</button>
+          <div className="section-title flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span>Orders Management</span>
+              <span className="text-xs text-muted font-normal">({filteredOrders.length} shown)</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className={`text-xs px-2.5 py-1.5 rounded-lg border font-medium flex items-center gap-1.5 transition ${soundAlerts ? 'bg-success/15 border-success text-success' : 'bg-[#222] border-[#333] text-muted'}`}
+                onClick={()=>setSoundAlerts(s=>!s)}
+                title="Toggle audio alerts on incoming orders"
+              >
+                <span>{soundAlerts ? '🔊 Sound: ON' : '🔈 Sound: OFF'}</span>
+              </button>
+              <button
+                type="button"
+                className="text-xs px-2.5 py-1.5 rounded-lg bg-[#202020] hover:bg-[#282828] border border-[#333] text-white"
+                onClick={playAlertTone}
+                title="Play test audio chime"
+              >
+                Test Chime
+              </button>
+              <button className="btn text-xs py-1.5" onClick={exportCsv}>Export CSV</button>
+              <button className="btn text-xs py-1.5 text-error" onClick={clearAll}>Clear All</button>
+            </div>
           </div>
+
+          {/* Search and Filters */}
+          <div className="flex flex-wrap sm:flex-nowrap gap-2 mt-2 mb-3">
+            <input
+              type="text"
+              className="bg-[#111] border border-[#222] rounded-xl p-2 text-xs flex-1 min-w-[160px]"
+              placeholder="Search by order ID, name, phone, address..."
+              value={orderSearch}
+              onChange={e=>setOrderSearch(e.target.value)}
+            />
+            <select
+              className="bg-[#111] border border-[#222] rounded-xl p-2 text-xs w-full sm:w-auto"
+              value={orderFilter}
+              onChange={e=>setOrderFilter(e.target.value)}
+            >
+              <option value="ALL">All Statuses</option>
+              <option value="NEW">New / Paid</option>
+              <option value="ACCEPTED">Accepted / In Kitchen</option>
+              <option value="OUT_FOR_DELIVERY">Out for Delivery</option>
+              <option value="DELIVERED">Delivered</option>
+              <option value="CANCELLED">Cancelled</option>
+            </select>
+          </div>
+
+          <ul className="flex flex-col gap-2 max-h-[380px] overflow-auto pr-1">
+            {filteredOrders.length === 0 ? (
+              <li className="text-center py-6 text-muted text-xs">No orders match the current filter or search.</li>
+            ) : (
+              filteredOrders.map((o)=> {
+                const upperStatus = String(o.status||'NEW').toUpperCase();
+                return (
+                  <li key={o.id} className="p-3 bg-[#111] border border-[#222] rounded-xl flex flex-col gap-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-sm text-[#f5c84a]">#{o.id}</span>
+                        <span className="font-bold text-sm">₹{o.grandTotal || o.total}</span>
+                        <span className="text-muted text-xs">• {new Date(o.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${
+                          upperStatus === 'DELIVERED' ? 'bg-success/20 text-success border border-success/40' :
+                          upperStatus === 'OUT_FOR_DELIVERY' ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40' :
+                          upperStatus === 'ACCEPTED' || upperStatus === 'PREPARING' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40' :
+                          upperStatus === 'CANCELLED' ? 'bg-error/20 text-error border border-error/40' :
+                          'bg-[#f5c84a]/20 text-[#f5c84a] border border-[#f5c84a]/40'
+                        }`}>
+                          {upperStatus}{o.prepTime && upperStatus === 'ACCEPTED' ? ` (${o.prepTime})` : ''}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="text-xs text-white/90 flex flex-wrap items-center gap-2">
+                      <span className="font-semibold">{o.customer?.name || 'Guest'}</span>
+                      {o.customer?.phone && <span className="text-muted font-mono">{o.customer.phone}</span>}
+                      {o.customer?.address && <span className="text-muted truncate max-w-[280px]">({o.customer.address})</span>}
+                    </div>
+
+                    {o.cancelReason && upperStatus === 'CANCELLED' && (
+                      <div className="text-[11px] text-error">Reason: {o.cancelReason}</div>
+                    )}
+
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-[#222]">
+                      <button className="px-2 py-1 text-xs rounded-lg bg-[#222] hover:bg-[#2c2c2c] border border-[#333] text-white" onClick={()=>setSelected(o)}>
+                        Details & KOT
+                      </button>
+
+                      {upperStatus !== 'DELIVERED' && upperStatus !== 'CANCELLED' && (
+                        <>
+                          {upperStatus !== 'ACCEPTED' && upperStatus !== 'OUT_FOR_DELIVERY' && (
+                            <>
+                              <button
+                                className="px-2 py-1 text-xs rounded-lg bg-blue-900/40 hover:bg-blue-900/60 border border-blue-700/60 text-blue-300 font-medium"
+                                onClick={()=>updateOrderStatus(o.id, 'ACCEPTED', '15 mins')}
+                              >
+                                Accept (15m)
+                              </button>
+                              <button
+                                className="px-2 py-1 text-xs rounded-lg bg-blue-900/40 hover:bg-blue-900/60 border border-blue-700/60 text-blue-300 font-medium"
+                                onClick={()=>updateOrderStatus(o.id, 'ACCEPTED', '30 mins')}
+                              >
+                                Accept (30m)
+                              </button>
+                            </>
+                          )}
+                          {upperStatus !== 'OUT_FOR_DELIVERY' && (
+                            <button
+                              className="px-2 py-1 text-xs rounded-lg bg-purple-900/40 hover:bg-purple-900/60 border border-purple-700/60 text-purple-300 font-medium"
+                              onClick={()=>updateOrderStatus(o.id, 'OUT_FOR_DELIVERY')}
+                            >
+                              Dispatch
+                            </button>
+                          )}
+                          <button
+                            className="px-2 py-1 text-xs rounded-lg bg-success/20 hover:bg-success/30 border border-success/40 text-success font-medium"
+                            onClick={()=>updateOrderStatus(o.id, 'DELIVERED')}
+                          >
+                            Mark Delivered
+                          </button>
+                          <button
+                            className="px-2 py-1 text-xs rounded-lg bg-[#222] hover:bg-error/20 border border-[#333] hover:border-error/40 text-error"
+                            onClick={()=>{
+                              const r = prompt(`Cancel order #${o.id}? Enter cancellation reason for customer:`, 'Item unavailable');
+                              if(r !== null) updateOrderStatus(o.id, 'CANCELLED', null, r.trim() || 'Cancelled by restaurant');
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      )}
+
+                      <button
+                        className="px-2 py-1 text-xs rounded-lg bg-[#222] hover:bg-[#2c2c2c] border border-[#333] text-muted hover:text-white"
+                        onClick={()=>{ if(confirm(`Refund ₹${o.total}?`)) refundOrder(o.id, o.total); }}
+                        disabled={orderStatus[o.id]?.pending}
+                      >
+                        Refund
+                      </button>
+
+                      <button
+                        className="p-1 rounded-lg text-[#ff8aa0] hover:bg-[#222] ml-auto"
+                        onClick={()=>deleteOrder(o.id)}
+                        aria-label="Delete Order"
+                        title="Delete Order"
+                      >
+                        <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M8 6h8"/>
+                          <rect x="6" y="9" width="12" height="12" rx="2"/>
+                          <path d="M10 12v6"/>
+                          <path d="M14 12v6"/>
+                        </svg>
+                      </button>
+                    </div>
+
+                    {orderStatus[o.id]?.text && (
+                      <span className={`text-[11px] ${orderStatus[o.id]?.type==='success'?'text-success':orderStatus[o.id]?.type==='error'?'text-error':'text-muted'}`}>{orderStatus[o.id]?.text}</span>
+                    )}
+                  </li>
+                );
+              })
+            )}
+          </ul>
         </div>
-        <ul className="flex flex-col gap-2 max-h-[280px] overflow-auto">
-          {(filteredOrders||[]).map((o)=> (
-            <li key={o.id} className="row">
-              <span>#{o.id}</span>
-              <span className="flex flex-wrap items-center gap-2 min-w-0">
-                <span className="font-bold">₹{o.total}</span>
-                <span className="min-w-0 truncate">{o.customer?.name}</span>
-                <span className="text-muted text-xs">{new Date(o.createdAt).toLocaleTimeString()}</span>
-                {o.status==='DELIVERED' && <span className="text-success text-xs">Delivered</span>}
-                <button className="px-2 py-1 rounded-md bg-[#2a2a2a] border border-[#3a3a3a]" onClick={()=>setSelected(o)}>View</button>
-                <button className="px-2 py-1 rounded-md bg-[#2a2a2a] border border-[#3a3a3a]" onClick={()=>markDelivered(o.id)}>Mark Delivered</button>
-                <button className="px-2 py-1 rounded-md bg-[#2a2a2a] border border-[#3a3a3a]" onClick={()=>{ if(confirm(`Refund ₹${o.total}?`)) refundOrder(o.id, o.total); }} disabled={orderStatus[o.id]?.pending}>Refund</button>
-                <button className="px-2 py-1 rounded-md border border-transparent text-[#ff8aa0] hover:bg-[#1a1a1a]" onClick={()=>deleteOrder(o.id)} aria-label="Delete">
-                  <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M8 6h8"/>
-                    <rect x="6" y="9" width="12" height="12" rx="2"/>
-                    <path d="M10 12v6"/>
-                    <path d="M14 12v6"/>
-                  </svg>
-                </button>
-                {orderStatus[o.id]?.text && (
-                  <span className={`text-xs ${orderStatus[o.id]?.type==='success'?'text-success':orderStatus[o.id]?.type==='error'?'text-error':'text-muted'}`}>{orderStatus[o.id]?.text}</span>
-                )}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </div>
       )}
 
           {authed && selected && (
-            <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center" onClick={()=>setSelected(null)}>
-              <div className="bg-[#0f0f0f] border border-[#222] rounded-xl p-4 w-[600px] max-w-[95%] max-h-[80vh] overflow-y-auto" onClick={e=>e.stopPropagation()}>
-                <div className="section-title flex items-center justify-between"><span>Order #{selected.id}</span><button className="btn" onClick={()=>setSelected(null)}>✕</button></div>
-                <div className="mt-2">
-                  <div className="row"><span>Status</span><span className="font-bold">{selected.status||'NEW'}</span></div>
-                  <div className="row"><span>Total</span><span className="font-bold">₹{selected.total}</span></div>
-                  <div className="row"><span>Customer</span><span>{selected.customer?.name} • {selected.customer?.phone}</span></div>
-                  <div className="mt-2"><div className="font-semibold">Address</div><div className="text-sm">{selected.customer?.address}</div></div>
-                  <div className="mt-1"><button className="btn" onClick={async()=>{ try{ await navigator.clipboard.writeText(selected.customer?.address||''); setMsg('Address copied'); }catch{} }}>Copy Address</button></div>
+            <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[110] flex items-center justify-center p-3" onClick={()=>setSelected(null)}>
+              <div className="bg-[#0f0f0f] border border-[#2a2a2a] rounded-2xl p-4 sm:p-5 w-[640px] max-w-full max-h-[85vh] overflow-y-auto shadow-2xl" onClick={e=>e.stopPropagation()}>
+                <div className="section-title flex items-center justify-between pb-2 border-b border-[#222]">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-base">Order #{selected.id}</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-[#222] text-[#f5c84a]">
+                      {selected.status || 'NEW'}
+                    </span>
+                  </div>
+                  <button className="text-gray-400 hover:text-white p-1 text-lg font-bold" onClick={()=>setSelected(null)}>✕</button>
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2 items-center justify-between bg-[#151515] p-3 rounded-xl border border-[#252525]">
+                  <div>
+                    <div className="text-xs text-muted">Change Status:</div>
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      <button className="text-xs px-2 py-1 rounded-lg bg-blue-950/60 border border-blue-700/60 text-blue-300" onClick={()=>updateOrderStatus(selected.id, 'ACCEPTED', '15 mins')}>Accept (15m)</button>
+                      <button className="text-xs px-2 py-1 rounded-lg bg-blue-950/60 border border-blue-700/60 text-blue-300" onClick={()=>updateOrderStatus(selected.id, 'ACCEPTED', '30 mins')}>Accept (30m)</button>
+                      <button className="text-xs px-2 py-1 rounded-lg bg-purple-950/60 border border-purple-700/60 text-purple-300" onClick={()=>updateOrderStatus(selected.id, 'OUT_FOR_DELIVERY')}>Dispatch</button>
+                      <button className="text-xs px-2 py-1 rounded-lg bg-emerald-950/60 border border-emerald-700/60 text-emerald-300" onClick={()=>updateOrderStatus(selected.id, 'DELIVERED')}>Delivered</button>
+                      <button className="text-xs px-2 py-1 rounded-lg bg-rose-950/60 border border-rose-700/60 text-rose-300" onClick={()=>{
+                        const r = prompt('Cancellation reason:', 'Customer request / Item unavailable');
+                        if(r !== null) updateOrderStatus(selected.id, 'CANCELLED', null, r.trim() || 'Cancelled');
+                      }}>Cancel</button>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="btn btn-primary text-xs px-3 py-2 font-bold flex items-center gap-1.5 rounded-lg shadow-md"
+                    onClick={()=>printOrderReceipt(selected)}
+                  >
+                    <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2">
+                      <polyline points="6 9 6 2 18 2 18 9"/>
+                      <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+                      <rect x="6" y="14" width="12" height="8"/>
+                    </svg>
+                    <span>Print Bill / KOT</span>
+                  </button>
+                </div>
+
+                <div className="mt-3 space-y-2">
+                  <div className="row"><span>Customer</span><span className="font-semibold">{selected.customer?.name} • {selected.customer?.phone}</span></div>
+                  <div className="row"><span>Total Amount</span><span className="font-bold text-[#f5c84a]">₹{selected.grandTotal || selected.total}</span></div>
+                  {selected.prepTime && <div className="row"><span>Kitchen Prep Time</span><span className="text-blue-300 font-semibold">{selected.prepTime}</span></div>}
+                  {selected.cancelReason && <div className="row"><span>Cancel Reason</span><span className="text-error">{selected.cancelReason}</span></div>}
+
+                  <div className="mt-2 bg-[#121212] p-3 rounded-xl border border-[#222]">
+                    <div className="font-semibold text-xs text-muted mb-1">DELIVERY ADDRESS</div>
+                    <div className="text-sm">{selected.customer?.address || 'No address provided'}</div>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      <button className="text-xs px-2.5 py-1 rounded bg-[#222] hover:bg-[#333] text-white" onClick={async()=>{ try{ await navigator.clipboard.writeText(selected.customer?.address||''); setMsg('Address copied'); }catch{} }}>Copy Address</button>
+                      {selected.customer?.geo && (
+                        <a className="text-xs px-2.5 py-1 rounded bg-[#222] hover:bg-[#333] text-[#f5c84a]" href={`https://maps.google.com/?q=${selected.customer.geo.lat},${selected.customer.geo.lng}`} target="_blank" rel="noopener noreferrer">Open Coordinates in Maps</a>
+                      )}
+                      {selected.customer?.manualLink && (
+                        <a className="text-xs px-2.5 py-1 rounded bg-[#222] hover:bg-[#333] text-[#f5c84a]" href={selected.customer.manualLink} target="_blank" rel="noopener noreferrer">Open User Link</a>
+                      )}
+                    </div>
+                  </div>
+
                   {selected.customer?.note && (
-                    <div className="mt-2"><div className="font-semibold">Order Notes</div><div className="text-sm">{selected.customer?.note}</div></div>
+                    <div className="bg-[#121212] p-3 rounded-xl border border-[#222]">
+                      <div className="font-semibold text-xs text-muted mb-0.5">ORDER NOTES</div>
+                      <div className="text-sm italic text-amber-200/90">{selected.customer.note}</div>
+                    </div>
                   )}
-                  {selected.customer?.geo && (
-                    <div className="mt-2 text-sm"><a className="text-[#f5c84a] underline" href={`https://maps.google.com/?q=${selected.customer.geo.lat},${selected.customer.geo.lng}`} target="_blank">Open in Maps</a></div>
-                  )}
-                  {selected.customer?.manualLink && (
-                    <div className="mt-2 text-sm"><a className="text-[#f5c84a] underline" href={selected.customer.manualLink} target="_blank">User Link</a></div>
-                  )}
+
                   <div className="mt-3">
-                    <div className="font-semibold">Items</div>
-                    <ul className="text-sm mt-1">
+                    <div className="font-semibold text-xs text-muted mb-1.5">ITEMS ORDERED</div>
+                    <ul className="text-sm divide-y divide-[#222] bg-[#121212] rounded-xl border border-[#222] overflow-hidden">
                       {(selected.items||[]).map((it,i)=> (
-                        <li key={i}>• {it.item?.name} ×{it.qty} — ₹{it.item?.price}</li>
+                        <li key={i} className="p-2.5 flex items-center justify-between">
+                          <span>{it.item?.name || 'Item'} × <strong className="text-white">{it.qty}</strong></span>
+                          <span className="font-mono text-muted">₹{Number(it.item?.price||0) * it.qty}</span>
+                        </li>
                       ))}
                     </ul>
                   </div>
-                  <div className="mt-3 border border-[#222] rounded-xl p-3 bg-[#080808] space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="font-semibold text-sm">WhatsApp Update</div>
-                    </div>
+
+                  {/* WhatsApp Quick Update Box */}
+                  <div className="mt-3 border border-[#222] rounded-xl p-3 bg-[#0d0d0d] space-y-2">
+                    <div className="font-semibold text-xs text-muted">SEND WHATSAPP STATUS TO CUSTOMER</div>
                     <div className="grid gap-2 mt-1">
-                      <select className="w-full bg-[#111] border border-[#222] rounded-xl p-2 text-sm" value={waTemplate} onChange={e=>setWaTemplate(e.target.value)}>
+                      <select className="w-full bg-[#111] border border-[#222] rounded-xl p-2 text-xs" value={waTemplate} onChange={e=>setWaTemplate(e.target.value)}>
                         <option value="Thank you for ordering from HoyChoy Café! Your order is confirmed. Estimated delivery: 15–20 minutes.">Confirm: 15–20 minutes</option>
                         <option value="Thank you for ordering from HoyChoy Café! Estimated delivery: ~30 minutes.">Confirm: ~30 minutes</option>
                         <option value="Thank you for ordering from HoyChoy Café! Due to high order volume, delivery may take up to 45 minutes. We appreciate your patience.">Delay: up to 45 minutes</option>
@@ -1782,33 +2462,32 @@ export default function Admin(){
                         <option value="Thank you for ordering from HoyChoy Café! Your order is out for delivery.">Status: out for delivery</option>
                         <option value="Thank you for ordering from HoyChoy Café. Your order has reached nearby and will arrive shortly.">Status: nearby</option>
                         <option value="We’re running a little behind today—your order may take an extra 20 minutes. Thank you for your patience. — HoyChoy Café">Delay: extra 20 minutes</option>
-                        <option value={`We attempted to call you but couldn’t connect. Kindly confirm your location here or call us at ${OWNER_PHONE}. — HoyChoy Café`}>Action: could not connect</option>
+                        <option value={`We attempted to call you but couldn’t connect. Kindly confirm your location here or call us at ${storePhone||OWNER_PHONE}. — HoyChoy Café`}>Action: could not connect</option>
                         <option value="Your order is ready for pickup at HoyChoy Café. You may collect it anytime within the next 20 minutes. Thank you!">Pickup: ready at café</option>
                         <option value="We have received your order and shared it with our kitchen team. Thank you for choosing HoyChoy Café.">Info: kitchen notified</option>
                         <option value="If you have any special instructions for this order, please reply to this message. — HoyChoy Café">Info: ask for instructions</option>
                         <option>Custom…</option>
                       </select>
                       {waTemplate==='Custom…' && (
-                        <textarea className="bg-[#111] border border-[#222] rounded-xl p-2 text-sm min-h-[60px]" placeholder="Type a custom message" value={waCustom} onChange={e=>setWaCustom(e.target.value)} />
+                        <textarea className="bg-[#111] border border-[#222] rounded-xl p-2 text-xs min-h-[60px]" placeholder="Type custom message for customer" value={waCustom} onChange={e=>setWaCustom(e.target.value)} />
                       )}
-                      <div className="text-xs text-muted">Opens WhatsApp with pre‑filled text; no contact saving needed.</div>
                       <div>
-                        <button className="btn" type="button" onClick={()=>{
+                        <button className="btn text-xs py-1.5" type="button" onClick={()=>{
                           const raw=(selected.customer?.phone||'').replace(/[^\d]/g,'');
-                          const phone = raw.length===10 ? `91${raw}` : raw; // default to India code if 10 digits
+                          const phone = raw.length===10 ? `91${raw}` : raw;
                           if(!phone){ setMsg('No customer phone number'); return; }
                           const text = waTemplate==='Custom…' ? (waCustom||'Your order has been placed.') : waTemplate;
                           const url = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
                           window.open(url,'_blank');
-                        }}>Send WhatsApp Update</button>
+                        }}>Send WhatsApp Update to Customer</button>
                       </div>
                     </div>
                   </div>
-                  <div className="flex gap-2 mt-3">
-                    <a className="btn" href={`tel:${selected.customer?.phone}`}>Call</a>
-                    <a className="btn" target="_blank" rel="noopener" href={`https://wa.me/${OWNER_PHONE}?text=${encodeURIComponent(`🟢 New Order #${selected.id}\nTotal: ₹${selected.total}\nCustomer: ${selected.customer?.name} (${selected.customer?.phone})\nAddress: ${selected.customer?.address}\nItems: ${(selected.items||[]).map(it=>`${it.item?.name}×${it.qty}`).join(', ')}`)}`}>WhatsApp</a>
-                    <button className="btn" onClick={()=>markDelivered(selected.id)}>Mark Delivered</button>
-                    <button className="btn" onClick={()=>refundOrder(selected.id, selected.total)}>Refund</button>
+
+                  <div className="flex flex-wrap gap-2 pt-2 border-t border-[#222]">
+                    <a className="btn text-xs" href={`tel:${selected.customer?.phone}`}>Call Customer</a>
+                    <a className="btn text-xs" target="_blank" rel="noopener noreferrer" href={`https://wa.me/${storePhone||OWNER_PHONE}?text=${encodeURIComponent(`🟢 New Order #${selected.id}\nTotal: ₹${selected.total}\nCustomer: ${selected.customer?.name} (${selected.customer?.phone})\nAddress: ${selected.customer?.address}\nItems: ${(selected.items||[]).map(it=>`${it.item?.name}×${it.qty}`).join(', ')}`)}`}>Forward to Kitchen (WhatsApp)</a>
+                    <button className="btn text-xs" onClick={()=>refundOrder(selected.id, selected.total)}>Refund Order</button>
                   </div>
                 </div>
               </div>
