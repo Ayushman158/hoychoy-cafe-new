@@ -2,13 +2,14 @@ const express = require('express');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-let pgSdk = {};
-try {
-  pgSdk = require('pg-sdk-node');
-} catch (e) {
-  // Graceful fallback if pg-sdk-node package has incomplete dist
-}
-const { StandardCheckoutClient, Env, MetaInfo, StandardCheckoutPayRequest, CreateSdkOrderRequest, RefundRequest } = pgSdk;
+// PhonePe's pg-sdk-node tarball (phonepe.mycloudrepo.io) started shipping
+// without any code, so every deploy installed an empty SDK and all payments
+// failed. We now call PhonePe's Standard Checkout v2 REST API directly; these
+// tiny builders keep the old SDK call style used below.
+function makeBuilder(){ const o={}; const b=new Proxy({}, { get:(_,k)=> k==='build' ? ()=>({...o}) : (v)=>{ o[k]=v; return b; } }); return b; }
+const MetaInfo = { builder: makeBuilder };
+const StandardCheckoutPayRequest = { builder: makeBuilder };
+const RefundRequest = { builder: makeBuilder };
 
 const app = express();
 // Render/Vercel sit behind one proxy hop; this makes req.ip the real client IP
@@ -35,7 +36,7 @@ const MERCHANT_ID = process.env.PHONEPE_MERCHANT_ID || 'MERCHANT_ID_HERE';
 const SALT_KEY = process.env.PHONEPE_SALT_KEY || 'SALT_KEY_HERE';
 const SALT_INDEX = process.env.PHONEPE_SALT_INDEX || '1';
 const ENV = (process.env.PHONEPE_ENV || 'SANDBOX').toUpperCase();
-const BASE = ENV==='PROD' ? 'https://api.phonepe.com/apis/pg' : 'https://api-preprod.phonepe.com/apis/pg-sandbox';
+const BASE = process.env.PHONEPE_BASE_URL || (ENV==='PROD' ? 'https://api.phonepe.com/apis/pg' : 'https://api-preprod.phonepe.com/apis/pg-sandbox');
 const CLIENT_ID = process.env.PHONEPE_CLIENT_ID || '';
 const CLIENT_SECRET = process.env.PHONEPE_CLIENT_SECRET || '';
 const CLIENT_VERSION = process.env.PHONEPE_CLIENT_VERSION || '';
@@ -197,13 +198,59 @@ function isValidSession(t){ if(!t) return false; const s=sessions.get(t); if(!s)
 
 let tokenCache = { token: '', expiresAt: 0 };
 let sdkClient = null;
+async function phonepeApi(method, path, body){
+  const token = await getAuthToken();
+  if(!token) throw new Error('phonepe_auth_failed');
+  const r = await fetch(`${BASE}${path}`, {
+    method,
+    headers: { 'Content-Type':'application/json', 'Authorization': `O-Bearer ${token}` },
+    body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(15000)
+  });
+  const data = await r.json().catch(()=>({}));
+  if(r.status===401){ tokenCache = { token:'', expiresAt:0 }; }
+  if(!r.ok){
+    console.log('phonepe_api_error', method, path, r.status, JSON.stringify(data).slice(0,300));
+    const e = new Error(data?.message || data?.code || `phonepe_http_${r.status}`); e.details = data; throw e;
+  }
+  return data;
+}
 function getSdkClient(){
-  try{
-    if(!sdkClient){
-      const envObj = ENV==='PROD' ? Env.PRODUCTION : Env.SANDBOX;
-      sdkClient = StandardCheckoutClient.getInstance(CLIENT_ID, CLIENT_SECRET, CLIENT_VERSION || '4.0', envObj);
+  if(!CLIENT_ID || !CLIENT_SECRET) return null;
+  if(sdkClient) return sdkClient;
+  sdkClient = {
+    async pay(req){
+      return phonepeApi('POST', '/checkout/v2/pay', {
+        merchantOrderId: String(req.merchantOrderId),
+        amount: Number(req.amount),
+        expireAfter: 1800,
+        metaInfo: req.metaInfo || {},
+        paymentFlow: { type:'PG_CHECKOUT', message:'HoyChoy Café order', merchantUrls:{ redirectUrl: String(req.redirectUrl) } }
+      });
+    },
+    async getOrderStatus(merchantOrderId){
+      const d = await phonepeApi('GET', `/checkout/v2/order/${encodeURIComponent(merchantOrderId)}/status?details=false`);
+      return { ...d, payment_details: d.paymentDetails || d.payment_details || [] };
+    },
+    async refund(req){
+      return phonepeApi('POST', '/payments/v2/refund', {
+        merchantRefundId: String(req.merchantRefundId),
+        originalMerchantOrderId: String(req.originalMerchantOrderId),
+        amount: Number(req.amount)
+      });
+    },
+    async getRefundStatus(merchantRefundId){
+      return phonepeApi('GET', `/payments/v2/refund/${encodeURIComponent(merchantRefundId)}/status`);
+    },
+    // PhonePe signs webhooks with Authorization: SHA256("username:password").
+    validateCallback(username, password, authHeader, rawBody){
+      const expected = crypto.createHash('sha256').update(`${username}:${password}`).digest('hex');
+      const got = String(authHeader||'').replace(/^SHA256\s*/i,'').trim().toLowerCase();
+      if(!got || !safeEqual(got, expected)) throw new Error('invalid_callback_signature');
+      const body = JSON.parse(rawBody);
+      return { event: body.event, type: body.event, payload: body.payload || {} };
     }
-  }catch{}
+  };
   return sdkClient;
 }
 
@@ -212,18 +259,19 @@ async function getAuthToken(){
     if(ACCESS_CODE) return ACCESS_CODE;
     const now = Math.floor(Date.now()/1000);
     if(tokenCache.token && tokenCache.expiresAt - 60 > now) return tokenCache.token;
-    const url = ENV==='PROD'
+    const url = process.env.PHONEPE_OAUTH_URL || (ENV==='PROD'
       ? 'https://api.phonepe.com/apis/identity-manager/v1/oauth/token'
-      : 'https://api-preprod.phonepe.com/apis/pg-sandbox/v1/oauth/token';
+      : 'https://api-preprod.phonepe.com/apis/pg-sandbox/v1/oauth/token');
     const body = new URLSearchParams({
       client_id: CLIENT_ID,
-      client_version: CLIENT_VERSION,
+      client_version: CLIENT_VERSION || '1',
       client_secret: CLIENT_SECRET,
       grant_type: 'client_credentials'
     }).toString();
-    const res = await fetch(url,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});
-    const data = await res.json();
+    const res = await fetch(url,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body, signal: AbortSignal.timeout(15000)});
+    const data = await res.json().catch(()=>({}));
     if(!res.ok || !data.access_token){
+      console.log('phonepe_oauth_failed', res.status, JSON.stringify(data).slice(0,200));
       throw new Error('oauth_failed');
     }
     tokenCache = { token: data.access_token, expiresAt: data.expires_at || (now+3600) };
@@ -528,8 +576,11 @@ function mapPaymentState(raw){
 function applyPaymentState(orderId, rawState, txn){
   const id = String(orderId||''); if(!id) return null;
   const mapped = mapPaymentState(rawState);
+  if(findOrderById(id)?.paymentState==='PAID' && mapped!=='PAID') return findOrderById(id);
   payments.set(id, {status: mapped==='PAID' ? 'COMPLETED' : mapped, transactionId: txn||null});
   const existing = findOrderById(id) || { id, createdAt: Date.now(), total: 0, items: [], customer: {}, status:'PENDING' };
+  // Once PhonePe has confirmed payment, a stale "pending" answer can't undo it.
+  if(existing.paymentState==='PAID' && mapped!=='PAID') return existing;
   // A late webhook must never drag an order the kitchen already accepted back to "PAID".
   const status = FULFILMENT_STATUSES.includes(String(existing.status)) ? existing.status : mapped;
   const updated = { ...existing, status, paymentState: mapped, txnId: txn || existing.txnId || null };
@@ -1486,7 +1537,8 @@ app.post('/api/initiate-payment', async (req,res)=>{
     });
     return res.json({redirectUrl:url, orderId});
   }catch(e){
-    return res.status(500).json({error:'server-error', message:String(e)});
+    console.log('initiate_payment_failed', String(e && e.message || e));
+    return res.status(502).json({error:'payment-start-failed', message:'PhonePe is not responding right now. Please try again in a minute.'});
   }
 });
 app.post('/api/initiate-test-payment', async (req,res)=>{
