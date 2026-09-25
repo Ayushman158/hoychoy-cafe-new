@@ -56,7 +56,7 @@ export default function PaymentStatus(){
     lines.push(`🟢 *New Order - ${MERCHANT_NAME}*`);
     lines.push("");
     lines.push("📋 *Order Details:*");
-    cust.items.forEach(({item,qty})=>lines.push(`• ${item.name} ×${qty} - ₹${item.price}`));
+    (cust.items||[]).forEach(({item,qty})=>lines.push(`• ${item.name} ×${qty} - ₹${item.price}`));
     lines.push("");
     lines.push(`💰 *Subtotal:* ₹${cust.total}`);
     if(cust.gst!=null) lines.push(`🧾 *GST (5%):* ₹${cust.gst}`);
@@ -83,7 +83,10 @@ export default function PaymentStatus(){
     lines.push(`🆔 *Order ID:* #${orderId}`);
     lines.push("---");
     const msg = lines.join("\n");
-    const url = `https://api.whatsapp.com/send?phone=${OWNER_PHONE}&text=${encodeURIComponent(msg)}`;
+    // Use the number the owner set in the admin panel, not the one baked into the code.
+    let storePhone = OWNER_PHONE;
+    try{ storePhone = JSON.parse(localStorage.getItem("hc_menu_backend_overrides")||"{}")?.storeSettings?.contactPhone || OWNER_PHONE; }catch{}
+    const url = `https://api.whatsapp.com/send?phone=${storePhone}&text=${encodeURIComponent(msg)}`;
     window.location.href = url;
   }
 

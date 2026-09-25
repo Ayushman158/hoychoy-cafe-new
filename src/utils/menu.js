@@ -26,7 +26,8 @@ export function saveBackendOverrides(v){localStorage.setItem(OV_REMOTE_KEY, JSON
 
 export async function fetchBackendOverridesAndCache(){
   try{
-    const res = await fetch(`${BACKEND_URL}/api/menu-overrides`);
+    // no-cache: revalidate every time, otherwise the 5s HTTP cache hides edits the admin just made.
+    const res = await fetch(`${BACKEND_URL}/api/menu-overrides`, { cache: "no-cache" });
     const data = await res.json();
     if(res.ok){
       saveBackendOverrides(data||{});
