@@ -6,3 +6,5 @@ dist/
 .env.production
 *.log
 coverage/
+server/data/sessions.json
+server/data/admin-auth.json

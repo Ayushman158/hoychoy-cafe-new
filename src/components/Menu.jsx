@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useLayoutEffect, useRef } from "react";
-import { getMenu } from "../utils/menu.js";
+import { getMenu, getBackendOverrides } from "../utils/menu.js";
 import { BACKEND_URL } from "../config.js";
 
 const BEST_SELLER_IDS = [
@@ -22,14 +22,15 @@ const IMAGE_MAP = {
   the_mafias_meal: "https://iili.io/fzCulLu.jpg"
 };
 
-function img(id){
+function getItemImage(id, item, overrides){
+  if(item && item.image) return item.image;
+  if(overrides && overrides.images && overrides.images[id]) return overrides.images[id];
   try{
     const k = "hc_img_"+id;
     const v = localStorage.getItem(k);
-    return v || IMAGE_MAP[id] || null;
-  }catch(e){
-    return IMAGE_MAP[id] || null;
-  }
+    if(v) return v;
+  }catch(e){}
+  return IMAGE_MAP[id] || null;
 }
 
 export default function Menu({cart, setCart, onProceed}){
@@ -92,23 +93,33 @@ const NonVegIcon = () => (
     />
   </svg>
 );
-  const base=getMenu();
+  const [overrides, setOverrides] = useState(() => getBackendOverrides());
+  const [menuVersion, setMenuVersion] = useState(0);
+  const base = useMemo(() => getMenu(overrides), [overrides, menuVersion]);
   const categories=[
     ...Array.from(new Set((base.categories||[]).map(c=>
       c.startsWith("Appetizers")?"Appetizers":c
     )))
   ];
+  const featuredIds = useMemo(() => {
+    if (Array.isArray(overrides?.featured) && overrides.featured.length > 0) {
+      return overrides.featured;
+    }
+    return BEST_SELLER_IDS;
+  }, [overrides]);
+
   const bestSellers=useMemo(()=>{
-    let list=(base.items||[]).filter(i=>BEST_SELLER_IDS.includes(i.id));
+    let list=(base.items||[]).filter(i=>featuredIds.includes(i.id));
+    list.sort((a,b)=>featuredIds.indexOf(a.id) - featuredIds.indexOf(b.id));
     if(filters.length){
       list=list.filter(i=> (filters.includes('veg')&&i.veg) || (filters.includes('nonveg')&&!i.veg));
     }
     return list;
-  },[filters]);
+  },[base, featuredIds, filters]);
   const items=useMemo(()=>{
     const q=query.trim();
     return (base.items||[]).filter(i=>{
-      if (!q && BEST_SELLER_IDS.includes(i.id)) return false;
+      if (!q && featuredIds.includes(i.id)) return false;
       const okF= !filters.length || ((filters.includes('veg')&&i.veg) || (filters.includes('nonveg')&&!i.veg));
       const okC = q ? true : (!cat || i.category===cat || (
         cat==="Appetizers" && (i.category==="Appetizers (Veg)"||i.category==="Appetizers (Non-Veg)")
@@ -116,7 +127,7 @@ const NonVegIcon = () => (
       const okQ = matchesQuery(i, q);
       return okF&&okC&&okQ;
     });
-  },[filters,cat,query]);
+  },[base, filters, cat, query, featuredIds]);
 
   const count=Object.values(cart).reduce((s,x)=>s+x,0);
   const total=items.reduce((s,i)=>s+(cart[i.id]?cart[i.id]*i.price:0),0);
@@ -135,15 +146,41 @@ const NonVegIcon = () => (
 
   useEffect(()=>{
     async function load(){
-      try{ const r=await fetch(`${BACKEND_URL}/api/menu-overrides`); const d=await r.json(); if(r.ok){ setClosingMsg(String(d.closingMessage||"")); } }
+      try{
+        const d = await fetchBackendOverridesAndCache();
+        if(d){
+          setClosingMsg(String(d.closingMessage||""));
+          setOverrides(d);
+          setMenuVersion(v=>v+1);
+        }
+      }
       catch{}
     }
     load();
+    const onUpdated = (e)=>{
+      if(e && e.detail){
+        setOverrides(e.detail);
+        setMenuVersion(v=>v+1);
+      }
+    };
+    window.addEventListener('hc_menu_updated', onUpdated);
+    return ()=> window.removeEventListener('hc_menu_updated', onUpdated);
   },[]);
 
   function add(id){
-  console.log('Adding item to cart:', id);
-  console.log('Current cart:', cart);setCart(c=>({...c,[id]:(c[id]||0)+1}));setJustAdded(id);setTimeout(()=>setJustAdded(null),1000);} 
+    setCart(c=>({...c,[id]:(c[id]||0)+1}));
+    setJustAdded(id);
+    setTimeout(()=>setJustAdded(null),1000);
+  }
+  function dec(id){
+    setCart(c=>{
+      const v = (c[id]||0)-1;
+      const n = {...c};
+      if(v<=0) delete n[id];
+      else n[id]=v;
+      return n;
+    });
+  } 
   function handleProceed(){ if(Object.values(cart).reduce((s,x)=>s+x,0)>0) onProceed(); }
   
 
@@ -237,63 +274,137 @@ const NonVegIcon = () => (
             </select>
           </div>
         </div>
-        {!query.trim() && (
-        <div className="mt-4">
-          <div className="text-xl font-bold">Best Sellers</div>
-          <div className="mt-2 overflow-x-auto flex gap-3 snap-x snap-mandatory pb-2">
-            {bestSellers.map(item=> (
-              <div key={item.id} className="min-w-[260px] rounded-xl border border-[#222] bg-[#111] overflow-hidden snap-start">
-                <div className="relative">
-                  {img(item.id) && (
-                    <img src={img(item.id)} alt={item.name} className="w-full h-40 object-cover" />
-                  )}
-                  <div className="absolute left-2 right-2 top-2 flex items-center">
-                    <div className="bg-black/70 text-white text-sm px-2 py-1 rounded inline-flex items-center gap-2">
-                      {item.veg?<VegIcon />:<NonVegIcon />}
-                      <span>{item.name}</span>
+        {!query.trim() && bestSellers.length > 0 && (
+        <div className="mt-4 mb-4">
+          <div className="flex items-center justify-between mb-2 px-1">
+            <div>
+              <div className="text-base font-extrabold flex items-center gap-1.5 text-white">
+                <span className="text-[#f5c84a]">⭐</span>
+                <span>Front Showcased Dishes</span>
+              </div>
+              <p className="text-xs text-muted">Chef's highlights & spotlight favorites</p>
+            </div>
+            <span className="text-[11px] bg-[#f5c84a]/15 text-[#f5c84a] font-bold px-2 py-0.5 rounded-full border border-[#f5c84a]/30">
+              {bestSellers.length} Spotlighted
+            </span>
+          </div>
+          <div className="overflow-x-auto flex gap-3 snap-x snap-mandatory pb-3 px-1 scrollbar-thin">
+            {bestSellers.map(item=> {
+              const imgUrl = getItemImage(item.id, item, overrides);
+              const inCartQty = cart[item.id] || 0;
+              return (
+                <div key={item.id} className="min-w-[240px] max-w-[260px] rounded-2xl border border-[#262626] hover:border-[#f5c84a]/40 bg-gradient-to-b from-[#181818] to-[#101010] overflow-hidden snap-start shadow-xl flex flex-col justify-between transition-all duration-200">
+                  <div className="relative">
+                    {imgUrl ? (
+                      <img
+                        src={imgUrl}
+                        alt={item.name}
+                        className="w-full h-36 object-cover"
+                        onError={(e)=>{ e.currentTarget.style.display='none'; }}
+                      />
+                    ) : (
+                      <div className="w-full h-36 bg-gradient-to-br from-[#222] via-[#181818] to-[#101010] flex flex-col items-center justify-center p-3 text-center border-b border-[#222]">
+                        <span className="text-3xl mb-1">{item.veg ? '🥗' : '🍖'}</span>
+                        <span className="text-[10px] text-muted font-semibold uppercase tracking-wider">{item.category}</span>
+                      </div>
+                    )}
+                    <div className="absolute top-2 left-2 right-2 flex items-center justify-between pointer-events-none">
+                      <span className="bg-black/80 backdrop-blur-md text-[10px] font-bold px-2 py-0.5 rounded-full text-[#f5c84a] border border-[#f5c84a]/30 flex items-center gap-1">
+                        ⭐ Spotlight
+                      </span>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full backdrop-blur-md ${item.available ? 'bg-[#182618] text-success border border-[#2e5e2e]' : 'bg-[#261818] text-error border border-[#5e2e2e]'}`}>
+                        {item.available ? 'In Stock' : 'Out'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="p-3 flex flex-col gap-2 flex-1 justify-between">
+                    <div>
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        {item.veg ? <VegIcon /> : <NonVegIcon />}
+                        <span className="font-bold text-sm text-white truncate">{item.name}</span>
+                      </div>
+                      <div className="text-[11px] text-muted">{item.category}</div>
+                    </div>
+                    <div className="pt-2 border-t border-[#222] flex items-center justify-between gap-2 mt-auto">
+                      <span className="text-base font-extrabold text-[#f5c84a]">₹{item.price}</span>
+                      {item.available ? (
+                        inCartQty > 0 ? (
+                          <div className="flex items-center bg-[#222] border border-[#333] rounded-lg p-0.5">
+                            <button type="button" className="w-6 h-6 flex items-center justify-center text-xs font-bold text-white hover:bg-[#333] rounded" onClick={()=>dec(item.id)}>−</button>
+                            <span className="w-5 text-center text-xs font-bold text-[#f5c84a]">{inCartQty}</span>
+                            <button type="button" className="w-6 h-6 flex items-center justify-center text-xs font-bold text-white hover:bg-[#333] rounded" onClick={()=>add(item.id)}>+</button>
+                          </div>
+                        ) : (
+                          <button type="button" className="btn btn-primary text-xs px-3 py-1 font-bold shadow-md hover:scale-105 active:scale-95 transition-all" onClick={()=>add(item.id)}>
+                            {justAdded === item.id ? "✓ Added" : "+ Add"}
+                          </button>
+                        )
+                      ) : (
+                        <span className="text-xs text-error font-medium">Out of Stock</span>
+                      )}
                     </div>
                   </div>
                 </div>
-                <div className="p-2 flex items-center justify-between">
-                  <span className="font-semibold">₹{item.price}</span>
-                  <button disabled={!item.available} className={`btn ${item.available?'btn-primary':''} ${item.available?'':'btn-disabled'} mt-1`} onClick={()=>add(item.id)}>
-                    {item.available?(justAdded===item.id?"✓ Added":"Add"):"Out"}
-                  </button>
-                </div>
-                <div className="px-2 pb-2 flex items-center gap-2 text-xs">
-                  <span className={`inline-block w-2 h-2 rounded-full ${item.available?'bg-success':'bg-error'}`}></span>
-                  <span>{item.available?"Available":"Out of Stock"}</span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
         )}
 
       <ul className="flex flex-col gap-2">
-        {items.map(item=> (
-          <li key={item.id} className="card flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              {img(item.id) && (
-                <img src={img(item.id)} alt={item.name} className="w-20 h-20 rounded-lg object-cover" />
-              )}
-              <div className="flex flex-col gap-1">
-                <div className="font-semibold flex items-center gap-2">
-                  {item.veg?<VegIcon />:<NonVegIcon />}
-                  <span>{item.name}</span>
-                </div>
-                <div className="text-muted">₹{item.price}</div>
-                <div className="flex items-center gap-2 text-xs">
-                  <span className={`inline-block w-2 h-2 rounded-full ${item.available?'bg-success':'bg-error'}`}></span>
-                  <span>{item.available?"Available":"Out of Stock"}</span>
+        {items.map(item=> {
+          const imgUrl = getItemImage(item.id, item, overrides);
+          const inCartQty = cart[item.id] || 0;
+          return (
+            <li key={item.id} className="card flex items-center justify-between p-3">
+              <div className="flex items-center gap-3 min-w-0 flex-1">
+                {imgUrl ? (
+                  <img
+                    src={imgUrl}
+                    alt={item.name}
+                    className="w-16 h-16 rounded-xl object-cover flex-shrink-0 border border-[#222]"
+                    onError={(e)=>{ e.currentTarget.style.display='none'; }}
+                  />
+                ) : (
+                  <div className="w-16 h-16 rounded-xl bg-[#181818] border border-[#222] flex flex-col items-center justify-center flex-shrink-0">
+                    <span className="text-xl">{item.veg ? '🥗' : '🍖'}</span>
+                  </div>
+                )}
+                <div className="flex flex-col gap-0.5 min-w-0">
+                  <div className="font-bold text-sm text-white flex items-center gap-1.5 truncate">
+                    {item.veg ? <VegIcon /> : <NonVegIcon />}
+                    <span className="truncate">{item.name}</span>
+                  </div>
+                  <div className="text-xs font-extrabold text-[#f5c84a]">₹{item.price}</div>
+                  <div className="flex items-center gap-2 text-[11px] text-muted">
+                    <span className="truncate">{item.category}</span>
+                    <span>•</span>
+                    <span className={item.available ? 'text-success' : 'text-error'}>
+                      {item.available ? "Available" : "Out of Stock"}
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
-            <button disabled={!item.available} className={`btn ${item.available?'btn-primary':''} ${item.available?'':'btn-disabled'}`} onClick={()=>add(item.id)}>
-              {item.available?(justAdded===item.id?"✓ Added":"Add"):"Out"}
-            </button>
-          </li>
-        ))}
+              <div className="ml-3 flex-shrink-0">
+                {item.available ? (
+                  inCartQty > 0 ? (
+                    <div className="flex items-center bg-[#222] border border-[#333] rounded-lg p-0.5">
+                      <button type="button" className="w-6 h-6 flex items-center justify-center text-xs font-bold text-white hover:bg-[#333] rounded" onClick={()=>dec(item.id)}>−</button>
+                      <span className="w-5 text-center text-xs font-bold text-[#f5c84a]">{inCartQty}</span>
+                      <button type="button" className="w-6 h-6 flex items-center justify-center text-xs font-bold text-white hover:bg-[#333] rounded" onClick={()=>add(item.id)}>+</button>
+                    </div>
+                  ) : (
+                    <button type="button" className="btn btn-primary text-xs px-3 py-1 font-bold shadow-md hover:scale-105 active:scale-95 transition-all" onClick={()=>add(item.id)}>
+                      {justAdded === item.id ? "✓ Added" : "+ Add"}
+                    </button>
+                  )
+                ) : (
+                  <button disabled className="btn btn-disabled text-xs px-3 py-1">Out</button>
+                )}
+              </div>
+            </li>
+          );
+        })}
       </ul>
 
       <button

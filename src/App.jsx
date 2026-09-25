@@ -29,19 +29,19 @@ export default function App(){
 
   useEffect(()=>{localStorage.setItem("hc_cart",JSON.stringify(cart));},[cart]);
 
-  useEffect(()=>{ fetchMenuRemoteAndCache().catch(()=>{}); fetchBackendOverridesAndCache().catch(()=>{}); },[]);
   useEffect(()=>{
     let cancelled=false;
     (async()=>{
-      const MIN_SPLASH_MS = 2200; // brand visibility minimum
-      const MAX_SPLASH_MS = 5000; // avoid long waits
-      const menuP = fetchMenuRemoteAndCache().catch(()=>{});
-      // Warm up backend tasks in parallel
-      fetchBackendOverridesAndCache().catch(()=>{});
-      fetch(`${BACKEND_URL}/api/app-status`).catch(()=>({}));
-      // Ensure splash shows at least MIN, then proceed when menu ready or MAX elapsed
+      const MIN_SPLASH_MS = 2000;
+      const MAX_SPLASH_MS = 4500;
+      // Pre-warm tasks in parallel once
+      const prefetchP = Promise.allSettled([
+        fetchMenuRemoteAndCache(),
+        fetchBackendOverridesAndCache(),
+        fetch(`${BACKEND_URL}/api/app-status`).catch(()=>null)
+      ]);
       await new Promise(res=>setTimeout(res, MIN_SPLASH_MS));
-      await Promise.race([menuP, new Promise(res=>setTimeout(res, MAX_SPLASH_MS - MIN_SPLASH_MS))]);
+      await Promise.race([prefetchP, new Promise(res=>setTimeout(res, MAX_SPLASH_MS - MIN_SPLASH_MS))]);
       if(!cancelled){ setView(v=> (v==='splash' ? 'menu' : v)); }
     })();
     return ()=>{ cancelled=true; };

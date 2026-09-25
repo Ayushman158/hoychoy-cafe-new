@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { getMenu, makeIdFromName } from "../utils/menu.js";
+import { getMenu, makeIdFromName, fetchBackendOverridesAndCache, saveBackendOverrides } from "../utils/menu.js";
 import { BACKEND_URL, OWNER_PHONE } from "../config.js";
 
 export default function Admin(){
@@ -22,6 +22,32 @@ export default function Admin(){
   const [price,setPrice]=useState("");
   const [veg,setVeg]=useState(false);
   const [category,setCategory]=useState("Misc");
+  const [customCategory,setCustomCategory]=useState("");
+  const [isNewCategory,setIsNewCategory]=useState(false);
+  const [addImage,setAddImage]=useState("");
+  const [addFeatured,setAddFeatured]=useState(false);
+  const [overrides,setOverrides]=useState({});
+  const [editingItem,setEditingItem]=useState(null);
+  const [editCustomCategory,setEditCustomCategory]=useState("");
+  const [isEditNewCategory,setIsEditNewCategory]=useState(false);
+  const [editingPriceId,setEditingPriceId]=useState(null);
+  const [inlinePrice,setInlinePrice]=useState("");
+  const [savingPrice,setSavingPrice]=useState(false);
+  const [menuFilterCategory,setMenuFilterCategory]=useState("");
+  const [featSelectId,setFeatSelectId]=useState("");
+  const [showRemovedList,setShowRemovedList]=useState(false);
+
+  // Admin Password Change state
+  const [pwdCurrent,setPwdCurrent]=useState("");
+  const [pwdNew,setPwdNew]=useState("");
+  const [pwdConfirm,setPwdConfirm]=useState("");
+  const [showPwdCurrent,setShowPwdCurrent]=useState(false);
+  const [showPwdNew,setShowPwdNew]=useState(false);
+  const [showPwdConfirm,setShowPwdConfirm]=useState(false);
+  const [pwdLoading,setPwdLoading]=useState(false);
+  const [pwdMsg,setPwdMsg]=useState("");
+  const [pwdSuccess,setPwdSuccess]=useState(false);
+
   const [msg,setMsg]=useState("");
   const [orders,setOrders]=useState([]);
   const [notifs,setNotifs]=useState([]);
@@ -198,14 +224,15 @@ export default function Admin(){
   }
   async function refreshOverrides(){
     try{
-      const r=await fetch(`${BACKEND_URL}/api/menu-overrides`);
-      const d=await r.json();
-      if(r.ok){
+      const d = await fetchBackendOverridesAndCache();
+      if(d){
         setOwnerClosed(!!d.appClosed);
         setClosingMessage(String(d.closingMessage||""));
         if(d.deliveryRates && Array.isArray(d.deliveryRates.tiers)){
           setDeliveryRates(d.deliveryRates);
         }
+        setOverrides(d||{});
+        setItems(getMenu(d).items||[]);
       }
     }catch{}
   }
@@ -308,6 +335,124 @@ export default function Admin(){
       setMsg('Exported CSV');
     }catch{ setMsg('Export failed'); }
   }
+  function startEdit(it){
+    const featList = Array.isArray(overrides?.featured) ? overrides.featured : [];
+    const isFeat = featList.includes(it.id);
+    const imgUrl = (overrides?.images && overrides.images[it.id]) || it.image || '';
+    setEditingItem({
+      id: it.id,
+      name: it.name,
+      price: it.price,
+      veg: !!it.veg,
+      category: it.category || 'Misc',
+      image: imgUrl,
+      featured: isFeat
+    });
+    setEditCustomCategory("");
+    setIsEditNewCategory(false);
+  }
+
+  async function saveItemEdit(e){
+    e.preventDefault();
+    if(!editingItem) return;
+    setMsg('');
+    const finalCategory = (isEditNewCategory && editCustomCategory.trim())
+      ? editCustomCategory.trim()
+      : (editingItem.category || 'Misc');
+
+    try{
+      const r = await authedFetch(`${BACKEND_URL}/api/admin/edit-item`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editingItem.id,
+          name: editingItem.name,
+          price: Number(editingItem.price || 0),
+          veg: editingItem.veg,
+          category: finalCategory,
+          image: editingItem.image,
+          featured: editingItem.featured
+        })
+      });
+      const d = await r.json();
+      if(!r.ok || !d.ok){ setMsg('Failed to update item'); return; }
+      await refreshOverrides();
+      setEditingItem(null);
+      setMsg(`Updated "${editingItem.name}" successfully!`);
+    }catch{ setMsg('Network error'); }
+  }
+
+  async function saveInlinePrice(id){
+    const num = Number(inlinePrice);
+    if(isNaN(num) || num < 0) {
+      setMsg("Please enter a valid price (₹0 or more)");
+      return;
+    }
+    setSavingPrice(true);
+    setMsg("");
+    try{
+      const r = await authedFetch(`${BACKEND_URL}/api/admin/edit-item`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, price: num })
+      });
+      const d = await r.json();
+      if(!r.ok || !d.ok){
+        setMsg("Failed to update price");
+        setSavingPrice(false);
+        return;
+      }
+      await refreshOverrides();
+      setEditingPriceId(null);
+      setInlinePrice("");
+      setMsg(`Price updated to ₹${num} successfully!`);
+    }catch{
+      setMsg("Network error updating price");
+    }
+    setSavingPrice(false);
+  }
+
+  async function toggleFeatured(id, isFeatured){
+    setMsg('');
+    try{
+      const r = await authedFetch(`${BACKEND_URL}/api/admin/set-featured`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, isFeatured })
+      });
+      const d = await r.json();
+      if(!r.ok || !d.ok){ setMsg('Failed to update featured item'); return; }
+      await refreshOverrides();
+      setMsg(isFeatured ? 'Item added to Front Showcase' : 'Item removed from Front Showcase');
+    }catch{ setMsg('Network error'); }
+  }
+
+  async function reorderFeatured(id, direction){
+    const featList = Array.isArray(overrides?.featured) ? [...overrides.featured] : [];
+    const idx = featList.indexOf(id);
+    if(idx === -1) return;
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if(targetIdx < 0 || targetIdx >= featList.length) return;
+    const temp = featList[idx];
+    featList[idx] = featList[targetIdx];
+    featList[targetIdx] = temp;
+    
+    setMsg("");
+    try{
+      const r = await authedFetch(`${BACKEND_URL}/api/admin/set-featured`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ featured: featList })
+      });
+      const d = await r.json();
+      if(!r.ok || !d.ok){ setMsg("Failed to reorder featured items"); return; }
+      await refreshOverrides();
+      setMsg("Front showcase order updated!");
+    }catch{
+      setMsg("Network error reordering featured items");
+    }
+  }
+
   async function removeItem(id){
     if(!confirm('Delete this item from menu?')) return;
     setMsg('');
@@ -315,22 +460,97 @@ export default function Admin(){
       const r=await authedFetch(`${BACKEND_URL}/api/admin/remove-item`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
       const d=await r.json();
       if(!r.ok || !d.ok){ setMsg('Failed to delete item'); return; }
-      setItems(getMenu().items||[]);
-      setMsg('Item deleted');
+      await refreshOverrides();
+      setMsg('Item deleted from menu');
     }catch{ setMsg('Network error'); }
+  }
+
+  async function restoreItem(id){
+    setMsg("");
+    try{
+      const r = await authedFetch(`${BACKEND_URL}/api/admin/restore-item`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+      });
+      const d = await r.json();
+      if(!r.ok || !d.ok){ setMsg("Failed to restore item"); return; }
+      await refreshOverrides();
+      setMsg("Item restored to menu successfully!");
+    }catch{
+      setMsg("Network error restoring item");
+    }
   }
 
   async function addItem(e){
     e.preventDefault(); setMsg("");
     const id = makeIdFromName(name||'item');
+    const finalCategory = (isNewCategory && customCategory.trim())
+      ? customCategory.trim()
+      : (category || 'Misc');
+
     try{
-      const r=await authedFetch(`${BACKEND_URL}/api/admin/add-item`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,name,price:Number(price||0),veg,category})});
+      const r=await authedFetch(`${BACKEND_URL}/api/admin/add-item`,{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          id,
+          name,
+          price:Number(price||0),
+          veg,
+          category: finalCategory,
+          image: addImage,
+          featured: addFeatured
+        })
+      });
       const d=await r.json();
       if(!r.ok){ setMsg('Failed to add item'); return; }
-      setItems(getMenu().items||[]);
-      setName(""); setPrice(""); setVeg(false); setCategory("Misc");
-      setMsg('Item added');
+      await refreshOverrides();
+      setName(""); setPrice(""); setVeg(false); setCategory("Misc"); setCustomCategory(""); setIsNewCategory(false); setAddImage(""); setAddFeatured(false);
+      setMsg(`Added "${name}" to menu!`);
     }catch{ setMsg('Network error'); }
+  }
+
+  async function handlePasswordChange(e){
+    e.preventDefault();
+    setPwdMsg("");
+    setPwdSuccess(false);
+
+    if(!pwdCurrent){
+      setPwdMsg("Please enter your current password");
+      return;
+    }
+    if(!pwdNew || pwdNew.length < 6){
+      setPwdMsg("New password must be at least 6 characters long");
+      return;
+    }
+    if(pwdNew !== pwdConfirm){
+      setPwdMsg("New passwords do not match");
+      return;
+    }
+
+    setPwdLoading(true);
+    try{
+      const r = await authedFetch(`${BACKEND_URL}/api/admin/change-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword: pwdCurrent, newPassword: pwdNew })
+      });
+      const d = await r.json();
+      if(!r.ok || !d.ok){
+        setPwdMsg(d.message || d.error || "Failed to update password");
+        setPwdLoading(false);
+        return;
+      }
+      setPwdSuccess(true);
+      setPwdMsg("Password changed successfully! Keep your new password secure.");
+      setPwdCurrent("");
+      setPwdNew("");
+      setPwdConfirm("");
+    }catch(err){
+      setPwdMsg("Network error while updating password");
+    }
+    setPwdLoading(false);
   }
 
   return (
@@ -463,6 +683,109 @@ export default function Admin(){
         </div>
       </div>
       )}
+
+      {authed && (
+      <div className="card mt-3">
+        <div className="section-title flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span>🔐 Admin Security & Password</span>
+          </div>
+          <span className="text-xs text-muted font-normal">Account: {email || 'hoychoycafe@gmail.com'}</span>
+        </div>
+        <p className="text-xs text-muted mb-3">Change your admin password anytime. Your new password will be saved securely and used for all future logins.</p>
+
+        {pwdMsg && (
+          <div className={`p-3 rounded-xl mb-3 text-xs flex items-center gap-2 border ${pwdSuccess ? 'bg-[#182618] border-success text-success' : 'bg-[#261818] border-error text-error'}`}>
+            <span>{pwdSuccess ? '✓' : '⚠️'}</span>
+            <span>{pwdMsg}</span>
+          </div>
+        )}
+
+        <form onSubmit={handlePasswordChange} className="flex flex-col gap-3">
+          <div>
+            <label className="text-xs text-muted block mb-1">Current Password</label>
+            <div className="flex gap-2">
+              <input
+                className="flex-1 bg-[#111] border border-[#222] rounded-xl p-2.5 text-sm"
+                placeholder="Enter current password"
+                type={showPwdCurrent ? 'text' : 'password'}
+                value={pwdCurrent}
+                onChange={e=>setPwdCurrent(e.target.value)}
+                required
+              />
+              <button
+                type="button"
+                className="btn text-xs px-3"
+                onClick={()=>setShowPwdCurrent(v=>!v)}
+              >
+                {showPwdCurrent ? 'Hide' : 'Show'}
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-muted block mb-1">New Password (min 6 characters)</label>
+              <div className="flex gap-2">
+                <input
+                  className="flex-1 bg-[#111] border border-[#222] rounded-xl p-2.5 text-sm"
+                  placeholder="New password"
+                  type={showPwdNew ? 'text' : 'password'}
+                  value={pwdNew}
+                  onChange={e=>setPwdNew(e.target.value)}
+                  minLength={6}
+                  required
+                />
+                <button
+                  type="button"
+                  className="btn text-xs px-2.5"
+                  onClick={()=>setShowPwdNew(v=>!v)}
+                >
+                  {showPwdNew ? 'Hide' : 'Show'}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs text-muted block mb-1">Confirm New Password</label>
+              <div className="flex gap-2">
+                <input
+                  className="flex-1 bg-[#111] border border-[#222] rounded-xl p-2.5 text-sm"
+                  placeholder="Repeat new password"
+                  type={showPwdConfirm ? 'text' : 'password'}
+                  value={pwdConfirm}
+                  onChange={e=>setPwdConfirm(e.target.value)}
+                  minLength={6}
+                  required
+                />
+                <button
+                  type="button"
+                  className="btn text-xs px-2.5"
+                  onClick={()=>setShowPwdConfirm(v=>!v)}
+                >
+                  {showPwdConfirm ? 'Hide' : 'Show'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {pwdNew && pwdConfirm && pwdNew !== pwdConfirm && (
+            <div className="text-xs text-error font-semibold">Passwords do not match</div>
+          )}
+
+          <div className="flex justify-end pt-1">
+            <button
+              type="submit"
+              className={`btn btn-primary font-bold px-5 py-2 text-xs flex items-center gap-2 ${pwdLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+              disabled={pwdLoading}
+            >
+              {pwdLoading ? 'Updating Password…' : '🔑 Change Password'}
+            </button>
+          </div>
+        </form>
+      </div>
+      )}
+
       {authed && (
       <div className="card mt-3">
         <div className="section-title">Coupon Management</div>
@@ -686,53 +1009,509 @@ export default function Admin(){
       {authed && (
       <div className="card mt-3">
         <div className="section-title flex flex-wrap items-center justify-between gap-2">
-          <span>Menu Availability</span>
-          <input className="bg-[#111] border border-[#222] rounded-xl p-2 w-full sm:w-56" placeholder="Search items" value={query} onChange={e=>setQuery(e.target.value)} />
+          <div className="flex items-center gap-2">
+            <span>⭐ Front Showcased Dishes (Homepage Spotlight)</span>
+          </div>
+          {(() => {
+            const featIds = Array.isArray(overrides?.featured) && overrides.featured.length > 0 ? overrides.featured : [];
+            return <span className="text-xs bg-[#f5c84a]/20 text-[#f5c84a] font-bold px-2 py-0.5 rounded-full">{featIds.length} Active on Front</span>;
+          })()}
         </div>
-        <ul className="flex flex-col gap-2 max-h-[300px] overflow-auto">
-          {(items||[]).filter(it=>it.name.toLowerCase().includes(query.toLowerCase())).map(it=> (
-            <li key={it.id} className="row">
-              <span>{it.name}</span>
-              <span className="flex items-center gap-2">
-                <span className={`inline-block w-2 h-2 rounded-full ${it.available?'bg-success':'bg-error'}`}></span>
-                <button className="px-2 py-1 rounded-md bg-[#2a2a2a] border border-[#3a3a3a]" onClick={()=>toggleAvailability(it.id,!it.available)}>{it.available?'Mark Out':'Mark Available'}</button>
-                <button className="px-2 py-1 rounded-md border border-transparent text-[#ff8aa0] hover:bg-[#1a1a1a]" onClick={()=>removeItem(it.id)} aria-label="Delete">
-                  <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M8 6h8"/>
-                    <rect x="6" y="9" width="12" height="12" rx="2"/>
-                    <path d="M10 12v6"/>
-                    <path d="M14 12v6"/>
-                  </svg>
+        <p className="text-xs text-muted mb-2">Dishes spotlighted here appear in the top carousel on the customer homepage. Use the arrows to change their display order.</p>
+
+        {/* Featured items badge list */}
+        {(() => {
+          const featIds = Array.isArray(overrides?.featured) && overrides.featured.length > 0 ? overrides.featured : [];
+          const featItems = featIds.map(id => (items || []).find(it => it.id === id)).filter(Boolean);
+          const nonFeatItems = (items || []).filter(it => !featIds.includes(it.id));
+
+          return (
+            <div className="flex flex-col gap-3">
+              {featItems.length === 0 ? (
+                <div className="text-xs text-muted p-2.5 rounded-xl bg-[#141414] border border-[#222]">
+                  Using default best sellers list. Select and add dishes below to customize what displays on the front page spotlight!
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {featItems.map((f, idx) => {
+                    const imgUrl = (overrides?.images && overrides.images[f.id]) || f.image || '';
+                    return (
+                      <div key={f.id} className="flex items-center gap-2 bg-[#181818] border border-[#333] hover:border-[#f5c84a]/40 px-2.5 py-1.5 rounded-xl shadow-sm">
+                        {imgUrl ? (
+                          <img src={imgUrl} alt={f.name} className="w-6 h-6 rounded-md object-cover" onError={(e)=>{ e.currentTarget.style.display='none'; }} />
+                        ) : (
+                          <span className="text-xs">{f.veg ? '🥗' : '🍖'}</span>
+                        )}
+                        <span className="text-xs font-semibold text-white">{f.name}</span>
+                        <span className="text-xs text-[#f5c84a] font-bold">₹{f.price}</span>
+                        <div className="flex items-center gap-0.5 ml-1 border-l border-[#333] pl-1.5">
+                          <button
+                            type="button"
+                            className="text-xs text-gray-400 hover:text-white px-1 disabled:opacity-30"
+                            title="Move earlier"
+                            disabled={idx === 0}
+                            onClick={() => reorderFeatured(f.id, 'up')}
+                          >
+                            ◀
+                          </button>
+                          <button
+                            type="button"
+                            className="text-xs text-gray-400 hover:text-white px-1 disabled:opacity-30"
+                            title="Move later"
+                            disabled={idx === featItems.length - 1}
+                            onClick={() => reorderFeatured(f.id, 'down')}
+                          >
+                            ▶
+                          </button>
+                          <button
+                            type="button"
+                            className="text-xs text-muted hover:text-[#ff8aa0] px-1 font-bold"
+                            title="Remove from front showcase"
+                            onClick={() => toggleFeatured(f.id, false)}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Add item to featured quick bar */}
+              <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 pt-2 border-t border-[#222]">
+                <select
+                  className="flex-1 bg-[#111] border border-[#222] rounded-xl p-2 text-xs w-full sm:w-auto"
+                  value={featSelectId}
+                  onChange={e => setFeatSelectId(e.target.value)}
+                >
+                  <option value="">-- Select a dish to showcase on front --</option>
+                  {nonFeatItems.map(it => (
+                    <option key={it.id} value={it.id}>{it.name} (₹{it.price}) — {it.category}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="btn btn-primary text-xs whitespace-nowrap w-full sm:w-auto font-bold"
+                  disabled={!featSelectId}
+                  onClick={() => {
+                    if (featSelectId) {
+                      toggleFeatured(featSelectId, true);
+                      setFeatSelectId("");
+                    }
+                  }}
+                >
+                  + Spotlight on Front
                 </button>
-              </span>
-            </li>
-          ))}
-        </ul>
+              </div>
+            </div>
+          );
+        })()}
       </div>
       )}
+
       {authed && (
       <div className="card mt-3">
-        <div className="section-title">Add Item</div>
-        <form onSubmit={addItem} className="flex flex-col gap-2">
-          <input className="bg-[#111] border border-[#222] rounded-xl p-2" placeholder="Name" value={name} onChange={e=>setName(e.target.value)} required />
-          <div className="grid grid-cols-2 gap-2">
-            <input className="bg-[#111] border border-[#222] rounded-xl p-2" placeholder="Price (₹)" value={price} onChange={e=>setPrice(e.target.value)} required />
-            <select className="bg-[#111] border border-[#222] rounded-xl p-2" value={category} onChange={e=>setCategory(e.target.value)}>
-              {categories.map(c=> (<option key={c} value={c}>{c}</option>))}
-            </select>
+        <div className="section-title flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span>Menu & Pricing Management</span>
+            <span className="text-xs text-muted font-normal">({(items||[]).length} dishes)</span>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <select className="bg-[#111] border border-[#222] rounded-xl p-2" value={veg?'veg':'nonveg'} onChange={e=>setVeg(e.target.value==='veg')}>
-              <option value="veg">Veg</option>
-              <option value="nonveg">Non-Veg</option>
+          <div className="flex flex-wrap sm:flex-nowrap gap-2 w-full sm:w-auto">
+            <select
+              className="bg-[#111] border border-[#222] rounded-xl p-2 text-xs w-full sm:w-36"
+              value={menuFilterCategory}
+              onChange={e => setMenuFilterCategory(e.target.value)}
+            >
+              <option value="">All Categories</option>
+              {categories.map(c => (<option key={c} value={c}>{c}</option>))}
             </select>
+            <input
+              className="bg-[#111] border border-[#222] rounded-xl p-2 text-xs w-full sm:w-44"
+              placeholder="Search dishes or categories…"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+            />
           </div>
-          <div className="flex gap-2">
-            <button className="btn btn-primary flex-1" type="submit">Add Item</button>
-            <button type="button" className="btn flex-1" onClick={()=>{setName('');setPrice('');setVeg(false);setCategory('Misc');}}>Clear</button>
+        </div>
+
+        <ul className="flex flex-col gap-2 max-h-[460px] overflow-auto pr-1">
+          {(items||[]).filter(it=>{
+            const matchQ = it.name.toLowerCase().includes(query.toLowerCase()) || (it.category||'').toLowerCase().includes(query.toLowerCase());
+            const matchC = !menuFilterCategory || it.category === menuFilterCategory;
+            return matchQ && matchC;
+          }).map(it=> {
+            const isFeat = Array.isArray(overrides?.featured) && overrides.featured.includes(it.id);
+            const imgUrl = (overrides?.images && overrides.images[it.id]) || it.image || '';
+            const isEditingThisPrice = editingPriceId === it.id;
+
+            return (
+              <li key={it.id} className="row flex-wrap sm:flex-nowrap gap-2 py-2.5 px-3 bg-[#131313] hover:bg-[#161616] rounded-xl border border-[#222] transition">
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                  {imgUrl ? (
+                    <img src={imgUrl} alt={it.name} className="w-11 h-11 rounded-lg object-cover flex-shrink-0 border border-[#2e2e2e]" onError={(e)=>{ e.currentTarget.style.display='none'; }} />
+                  ) : (
+                    <div className="w-11 h-11 rounded-lg bg-[#1a1a1a] border border-[#2e2e2e] flex items-center justify-center flex-shrink-0 text-sm">
+                      {it.veg ? '🥗' : '🍖'}
+                    </div>
+                  )}
+                  <div className="flex flex-col min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-bold text-sm text-white truncate">{it.name}</span>
+                      {isFeat && (
+                        <span className="bg-[#f5c84a]/20 text-[#f5c84a] text-[10px] px-1.5 py-0.5 rounded-full font-bold border border-[#f5c84a]/30">
+                          ⭐ Front Spotlight
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-muted flex-wrap">
+                      {/* Price Display & Inline Edit */}
+                      {isEditingThisPrice ? (
+                        <div className="flex items-center gap-1 bg-black border border-[#f5c84a] rounded-lg p-0.5">
+                          <span className="text-xs text-[#f5c84a] font-bold pl-1">₹</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            className="w-16 bg-transparent text-white text-xs p-1 font-bold outline-none"
+                            value={inlinePrice}
+                            onChange={e=>setInlinePrice(e.target.value)}
+                            onKeyDown={e=>{
+                              if(e.key === 'Enter') saveInlinePrice(it.id);
+                              if(e.key === 'Escape') setEditingPriceId(null);
+                            }}
+                            autoFocus
+                          />
+                          <button
+                            type="button"
+                            className="px-1.5 py-0.5 text-xs bg-success text-black font-bold rounded hover:opacity-90 disabled:opacity-50"
+                            disabled={savingPrice}
+                            onClick={()=>saveInlinePrice(it.id)}
+                            title="Save new price"
+                          >
+                            ✓
+                          </button>
+                          <button
+                            type="button"
+                            className="px-1.5 py-0.5 text-xs bg-[#333] text-white rounded hover:bg-[#444]"
+                            onClick={()=>{ setEditingPriceId(null); setInlinePrice(""); }}
+                            title="Cancel"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1">
+                          <span className="text-[#f5c84a] font-bold text-sm">₹{it.price}</span>
+                          <button
+                            type="button"
+                            className="text-[10px] text-muted hover:text-[#f5c84a] px-1.5 py-0.5 rounded border border-[#2a2a2a] bg-[#1a1a1a] transition"
+                            title="Quick edit price"
+                            onClick={()=>{
+                              setEditingPriceId(it.id);
+                              setInlinePrice(String(it.price));
+                            }}
+                          >
+                            ✏️ Edit Price
+                          </button>
+                        </div>
+                      )}
+
+                      <span>•</span>
+                      <span className="truncate max-w-[120px]">{it.category}</span>
+                      <span>•</span>
+                      <span className={it.veg ? 'text-success font-medium' : 'text-error font-medium'}>{it.veg ? 'Veg' : 'Non-Veg'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 flex-shrink-0 ml-auto">
+                  {/* Quick 1-click Spotlight toggle button */}
+                  <button
+                    type="button"
+                    className={`px-2.5 py-1 text-xs rounded-lg border flex items-center gap-1 transition ${isFeat ? 'bg-[#f5c84a]/20 border-[#f5c84a]/50 text-[#f5c84a] font-bold' : 'bg-[#1e1e1e] border-[#333] text-gray-300 hover:text-white'}`}
+                    onClick={() => toggleFeatured(it.id, !isFeat)}
+                    title={isFeat ? "Remove from front showcase" : "Showcase this dish on the front page"}
+                  >
+                    {isFeat ? '⭐ Spotlight' : '☆ Spotlight'}
+                  </button>
+
+                  {/* Full Edit button */}
+                  <button
+                    type="button"
+                    className="px-2.5 py-1 text-xs rounded-lg bg-[#242424] hover:bg-[#333] border border-[#333] text-white flex items-center gap-1"
+                    onClick={() => startEdit(it)}
+                    title="Edit dish name, price, diet, category, and photo"
+                  >
+                    ✏️ Edit
+                  </button>
+
+                  {/* Stock Toggle */}
+                  <button
+                    type="button"
+                    className={`px-2 py-1 text-xs rounded-lg border ${it.available ? 'bg-[#182618] border-[#2e5e2e] text-success' : 'bg-[#261818] border-[#5e2e2e] text-error'}`}
+                    onClick={() => toggleAvailability(it.id, !it.available)}
+                    title={it.available ? "Mark as Out of Stock" : "Mark as In Stock"}
+                  >
+                    {it.available ? 'In Stock' : 'Out'}
+                  </button>
+
+                  {/* Delete button */}
+                  <button
+                    type="button"
+                    className="p-1.5 rounded-lg border border-transparent text-[#ff8aa0] hover:bg-[#251818]"
+                    onClick={() => removeItem(it.id)}
+                    aria-label="Delete"
+                    title="Remove dish from menu"
+                  >
+                    <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M8 6h8"/>
+                      <rect x="6" y="9" width="12" height="12" rx="2"/>
+                      <path d="M10 12v6"/>
+                      <path d="M14 12v6"/>
+                    </svg>
+                  </button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+
+        {/* Collapsible Removed Dishes Restore Panel */}
+        {Array.isArray(overrides?.removed) && overrides.removed.length > 0 && (
+          <div className="mt-3 pt-2 border-t border-[#222]">
+            <button
+              type="button"
+              className="text-xs text-muted hover:text-white flex items-center justify-between w-full p-1"
+              onClick={() => setShowRemovedList(s => !s)}
+            >
+              <span>🗑️ Removed Dishes ({overrides.removed.length})</span>
+              <span>{showRemovedList ? '▲ Hide' : '▼ View & Restore'}</span>
+            </button>
+
+            {showRemovedList && (
+              <div className="flex flex-col gap-1.5 mt-2 p-2 bg-[#121212] border border-[#222] rounded-xl max-h-40 overflow-auto">
+                {overrides.removed.map(remId => (
+                  <div key={remId} className="flex items-center justify-between py-1 px-2 rounded-lg bg-[#181818] text-xs">
+                    <span className="font-mono text-gray-300 truncate">{remId}</span>
+                    <button
+                      type="button"
+                      className="btn text-[11px] px-2 py-0.5 text-success border border-[#2e5e2e] bg-[#182618] hover:bg-[#203620]"
+                      onClick={() => restoreItem(remId)}
+                    >
+                      ↩ Restore to Menu
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      )}
+
+      {authed && (
+      <div className="card mt-3">
+        <div className="section-title">Add New Dish to Menu</div>
+        <form onSubmit={addItem} className="flex flex-col gap-2.5">
+          <input
+            className="bg-[#111] border border-[#222] rounded-xl p-2.5 text-sm"
+            placeholder="Dish Name (e.g., Crispy Corn Butter Pepper)"
+            value={name}
+            onChange={e=>setName(e.target.value)}
+            required
+          />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div>
+              <label className="text-[11px] text-muted block mb-0.5">Price (₹)</label>
+              <input
+                className="w-full bg-[#111] border border-[#222] rounded-xl p-2 text-sm font-semibold text-[#f5c84a]"
+                placeholder="Price (₹)"
+                type="number"
+                min="0"
+                step="1"
+                value={price}
+                onChange={e=>setPrice(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <label className="text-[11px] text-muted block mb-0.5">Category</label>
+              <select
+                className="w-full bg-[#111] border border-[#222] rounded-xl p-2 text-sm"
+                value={isNewCategory ? '__NEW__' : category}
+                onChange={e=>{
+                  if(e.target.value === '__NEW__'){
+                    setIsNewCategory(true);
+                  } else {
+                    setIsNewCategory(false);
+                    setCategory(e.target.value);
+                  }
+                }}
+              >
+                {categories.map(c=> (<option key={c} value={c}>{c}</option>))}
+                <option value="__NEW__">+ Add New Category…</option>
+              </select>
+            </div>
+          </div>
+
+          {/* New custom category input if selected */}
+          {isNewCategory && (
+            <div className="flex flex-col gap-1 p-2.5 bg-[#141414] border border-[#2e2e2e] rounded-xl">
+              <label className="text-xs text-[#f5c84a] font-semibold">Enter New Category Name:</label>
+              <input
+                className="bg-[#181818] border border-[#333] rounded-lg p-2 text-sm text-white"
+                placeholder="e.g. Sizzlers, Combos, Mocktails, Desserts…"
+                value={customCategory}
+                onChange={e=>setCustomCategory(e.target.value)}
+                required={isNewCategory}
+                autoFocus
+              />
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div>
+              <label className="text-[11px] text-muted block mb-0.5">Diet Type</label>
+              <select className="w-full bg-[#111] border border-[#222] rounded-xl p-2 text-sm" value={veg?'veg':'nonveg'} onChange={e=>setVeg(e.target.value==='veg')}>
+                <option value="veg">🟢 Veg</option>
+                <option value="nonveg">🔴 Non-Veg</option>
+              </select>
+            </div>
+            <div className="flex items-end">
+              <label className="flex items-center gap-2 text-xs bg-[#111] border border-[#222] rounded-xl px-3 py-2.5 cursor-pointer w-full">
+                <input type="checkbox" className="w-4 h-4 rounded text-[#f5c84a]" checked={addFeatured} onChange={e=>setAddFeatured(e.target.checked)} />
+                <span className="font-semibold text-white">⭐ Spotlight on Front Page</span>
+              </label>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <input
+              className="bg-[#111] border border-[#222] rounded-xl p-2 text-sm"
+              placeholder="Dish Image URL (optional direct image link)"
+              value={addImage}
+              onChange={e=>setAddImage(e.target.value)}
+            />
+            {addImage && (
+              <div className="flex items-center gap-2 p-2 bg-[#141414] border border-[#222] rounded-xl">
+                <img src={addImage} alt="Preview" className="w-12 h-12 rounded-lg object-cover border border-[#333]" onError={(e)=>{ e.currentTarget.style.display='none'; }} />
+                <span className="text-xs text-muted">Preview of the food photo</span>
+              </div>
+            )}
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button className="btn btn-primary flex-1 font-bold py-2.5 text-sm" type="submit">+ Add Dish to Menu</button>
+            <button type="button" className="btn flex-1 py-2.5 text-sm" onClick={()=>{setName('');setPrice('');setVeg(false);setCategory('Misc');setCustomCategory('');setIsNewCategory(false);setAddImage('');setAddFeatured(false);}}>Clear</button>
           </div>
         </form>
       </div>
+      )}
+
+      {/* Edit Item Modal */}
+      {editingItem && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" role="dialog" aria-modal="true">
+          <div className="bg-[#121212] border border-[#2e2e2e] rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-5 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-[#222] mb-4">
+              <h3 className="font-bold text-lg text-white flex items-center gap-2">
+                <span>✏️</span>
+                <span>Edit Menu Dish</span>
+              </h3>
+              <button type="button" className="text-gray-400 hover:text-white text-xl px-2 py-1" onClick={()=>setEditingItem(null)}>✕</button>
+            </div>
+            <form onSubmit={saveItemEdit} className="flex flex-col gap-3">
+              <div>
+                <label className="text-xs text-muted block mb-1">Dish Name</label>
+                <input className="w-full bg-[#181818] border border-[#2e2e2e] rounded-xl p-2.5 text-sm" value={editingItem.name} onChange={e=>setEditingItem(s=>({...s, name: e.target.value}))} required />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-muted block mb-1">Price (₹)</label>
+                  <input className="w-full bg-[#181818] border border-[#2e2e2e] rounded-xl p-2.5 text-sm font-semibold text-[#f5c84a]" type="number" min="0" step="1" value={editingItem.price} onChange={e=>setEditingItem(s=>({...s, price: e.target.value}))} required />
+                </div>
+                <div>
+                  <label className="text-xs text-muted block mb-1">Diet Type</label>
+                  <select className="w-full bg-[#181818] border border-[#2e2e2e] rounded-xl p-2.5 text-sm" value={editingItem.veg ? 'veg' : 'nonveg'} onChange={e=>setEditingItem(s=>({...s, veg: e.target.value==='veg'}))}>
+                    <option value="veg">🟢 Veg</option>
+                    <option value="nonveg">🔴 Non-Veg</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-muted block mb-1">Category</label>
+                <select
+                  className="w-full bg-[#181818] border border-[#2e2e2e] rounded-xl p-2.5 text-sm"
+                  value={isEditNewCategory ? '__NEW__' : editingItem.category}
+                  onChange={e=>{
+                    if(e.target.value === '__NEW__'){
+                      setIsEditNewCategory(true);
+                    } else {
+                      setIsEditNewCategory(false);
+                      setEditingItem(s=>({...s, category: e.target.value}));
+                    }
+                  }}
+                >
+                  {categories.map(c=> (<option key={c} value={c}>{c}</option>))}
+                  <option value="__NEW__">+ Add New Category…</option>
+                </select>
+              </div>
+
+              {/* Edit custom category input */}
+              {isEditNewCategory && (
+                <div className="flex flex-col gap-1 p-2.5 bg-[#141414] border border-[#2e2e2e] rounded-xl">
+                  <label className="text-xs text-[#f5c84a] font-semibold">New Category Name:</label>
+                  <input
+                    className="bg-[#181818] border border-[#333] rounded-lg p-2 text-sm text-white"
+                    placeholder="Enter new category name"
+                    value={editCustomCategory}
+                    onChange={e=>setEditCustomCategory(e.target.value)}
+                    required={isEditNewCategory}
+                    autoFocus
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="text-xs text-muted block mb-1">
+                  Image URL <span className="text-[#888] font-normal">(direct link from PostImages, ImgBB, Cloudinary, etc.)</span>
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    className="flex-1 bg-[#181818] border border-[#2e2e2e] rounded-xl p-2.5 text-sm"
+                    placeholder="https://..."
+                    value={editingItem.image || ''}
+                    onChange={e=>setEditingItem(s=>({...s, image: e.target.value}))}
+                  />
+                  {editingItem.image && (
+                    <button type="button" className="btn text-xs px-2.5" onClick={()=>setEditingItem(s=>({...s, image: ''}))}>Clear</button>
+                  )}
+                </div>
+              </div>
+              {editingItem.image && (
+                <div className="p-2 border border-[#2a2a2a] rounded-xl bg-[#0a0a0a] flex items-center gap-3">
+                  <img src={editingItem.image} alt="Preview" className="w-16 h-16 rounded-lg object-cover border border-[#333]" onError={(e)=>{ e.currentTarget.style.display='none'; }} />
+                  <span className="text-xs text-muted">Preview of the food photo that will appear on the menu</span>
+                </div>
+              )}
+              <label className="flex items-center gap-2.5 p-3 rounded-xl bg-[#181818] border border-[#2e2e2e] cursor-pointer mt-1">
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 rounded text-[#f5c84a]"
+                  checked={!!editingItem.featured}
+                  onChange={e=>setEditingItem(s=>({...s, featured: e.target.checked}))}
+                />
+                <div className="flex flex-col text-xs">
+                  <span className="font-semibold text-white">⭐ Showcase on Front Page Spotlight</span>
+                  <span className="text-muted">Display this item prominently in the top carousel on the homepage</span>
+                </div>
+              </label>
+              <div className="flex gap-2 pt-2 border-t border-[#222]">
+                <button className="btn btn-primary flex-1 py-2.5 font-bold" type="submit">Save Changes</button>
+                <button type="button" className="btn flex-1 py-2.5" onClick={()=>setEditingItem(null)}>Cancel</button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
       {authed && (

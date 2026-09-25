@@ -2,7 +2,13 @@ const express = require('express');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const { StandardCheckoutClient, Env, MetaInfo, StandardCheckoutPayRequest, CreateSdkOrderRequest, RefundRequest } = require('pg-sdk-node');
+let pgSdk = {};
+try {
+  pgSdk = require('pg-sdk-node');
+} catch (e) {
+  // Graceful fallback if pg-sdk-node package has incomplete dist
+}
+const { StandardCheckoutClient, Env, MetaInfo, StandardCheckoutPayRequest, CreateSdkOrderRequest, RefundRequest } = pgSdk;
 
 const app = express();
 app.use(express.json({verify:(req,res,buf)=>{try{req.rawBody=buf.toString('utf8');}catch{}}}));
@@ -36,14 +42,18 @@ const ADMIN_REMEMBER_TTL_DAYS = Number(process.env.ADMIN_REMEMBER_TTL_DAYS||365)
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const TELEGRAM_ADMIN_CHAT_ID = process.env.TELEGRAM_ADMIN_CHAT_ID || '';
 
-const DATA_DIR = process.env.DATA_DIR || '/var/data';
+const DATA_DIR = process.env.DATA_DIR || (fs.existsSync('/var/data') ? '/var/data' : path.join(__dirname, 'data'));
 const OV_PATH = path.join(DATA_DIR, 'overrides.json');
 const SESS_PATH = path.join(DATA_DIR, 'sessions.json');
+const AUTH_PATH = path.join(DATA_DIR, 'admin-auth.json');
 function ensureDir(){try{fs.mkdirSync(DATA_DIR,{recursive:true});}catch{}}
 function loadOverridesFS(){ try{ ensureDir(); const s=fs.readFileSync(OV_PATH,'utf-8'); return JSON.parse(s||'{}'); }catch{ return {}; } }
 function saveOverridesFS(obj){ try{ ensureDir(); fs.writeFileSync(OV_PATH, JSON.stringify(obj,null,2)); }catch{} }
 function loadSessionsFS(){ try{ ensureDir(); const s=fs.readFileSync(SESS_PATH,'utf-8'); return JSON.parse(s||'{}'); }catch{ return {}; } }
 function saveSessionsFS(map){ try{ ensureDir(); const obj={}; map.forEach((val,key)=>{ obj[key]=val; }); fs.writeFileSync(SESS_PATH, JSON.stringify(obj,null,2)); }catch{} }
+function loadAuthFS(){ try{ ensureDir(); const s=fs.readFileSync(AUTH_PATH,'utf-8'); return JSON.parse(s||'{}'); }catch{ return {}; } }
+function saveAuthFS(obj){ try{ ensureDir(); fs.writeFileSync(AUTH_PATH, JSON.stringify(obj,null,2)); }catch{} }
+
 const UP_URL = process.env.UPSTASH_REDIS_REST_URL || '';
 const UP_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || '';
 async function upGet(key){
@@ -60,9 +70,34 @@ async function upGet(key){
 async function upSet(key, value){
   try{ if(!UP_URL||!UP_TOKEN) return false; const val=encodeURIComponent(JSON.stringify(value)); const r=await fetch(`${UP_URL}/set/${encodeURIComponent(key)}/${val}`,{method:'POST',headers:{Authorization:`Bearer ${UP_TOKEN}`}}); return r.ok; }catch{ return false }
 }
+
+let dynamicAdminAuth = loadAuthFS();
+async function refreshAdminAuthFromStore(){
+  try{
+    const v = await upGet('hc:admin_auth');
+    if(v && typeof v==='object' && v.password){
+      dynamicAdminAuth = v;
+      saveAuthFS(dynamicAdminAuth);
+    }
+  }catch{}
+}
+function getAdminPassword(){
+  if(dynamicAdminAuth && dynamicAdminAuth.password){
+    return String(dynamicAdminAuth.password);
+  }
+  return ADMIN_PASSWORD;
+}
+
 let overrides = loadOverridesFS();
-async function refreshOverridesFromStore(){ const v = await upGet('hc:overrides'); if(v && typeof v==='object'){ overrides = v; saveOverridesFS(overrides); } }
-function saveOverrides(obj){ overrides = obj; saveOverridesFS(obj); upSet('hc:overrides', obj); }
+let lastOverridesRefresh = 0;
+async function refreshOverridesFromStore(force = false){
+  const now = Date.now();
+  if(!force && now - lastOverridesRefresh < 4000){ return; }
+  const v = await upGet('hc:overrides');
+  if(v && typeof v==='object'){ overrides = v; saveOverridesFS(overrides); }
+  lastOverridesRefresh = now;
+}
+function saveOverrides(obj){ overrides = obj; saveOverridesFS(obj); lastOverridesRefresh = Date.now(); upSet('hc:overrides', obj); }
 const sessions = new Map();
 try{ const obj = loadSessionsFS(); if(obj && typeof obj==='object'){ const m=new Map(Object.entries(obj)); sessions.clear(); m.forEach((val,key)=>sessions.set(key,val)); } }catch{}
 const ADMIN_TOKEN_TTL_HOURS = Number(process.env.ADMIN_TOKEN_TTL_HOURS||24);
@@ -383,10 +418,10 @@ function fmtTGStatusChange(o, status){
 function isWithinHours(){ const h=new Date().getHours(); return h>=12 && h<21; }
 app.get('/api/app-status', async (req,res)=>{
   try{ await refreshOverridesFromStore(); }catch{}
-  try{ await refreshSessionsFromStore(); }catch{}
   const closed = overrides.appClosed===true || process.env.APP_CLOSED==='1';
   const open = !closed;
   const reason = closed ? 'CLOSED_BY_OWNER' : 'OPEN';
+  res.set('Cache-Control', 'public, max-age=5, stale-while-revalidate=10');
   res.json({open, reason, ownerClosed: overrides.appClosed===true, closedUntil: overrides.closedUntil||0});
 });
 
@@ -397,16 +432,18 @@ function requireAdmin(req,res,next){
   return res.status(401).json({error:'unauthorized'});
 }
 
-app.post('/api/admin/login', (req,res)=>{
+app.post('/api/admin/login', async (req,res)=>{
   const { email, password, remember } = req.body||{};
-  if(!ADMIN_EMAIL || !ADMIN_PASSWORD) return res.status(500).json({error:'admin-not-configured'});
+  try{ await refreshAdminAuthFromStore(); }catch{}
+  const currentAdminPwd = getAdminPassword();
+  if(!ADMIN_EMAIL || !currentAdminPwd) return res.status(500).json({error:'admin-not-configured'});
   const cid = getClientId(req);
   const rec = loginAttempts.get(cid)||{count:0, blockedUntil:0};
   if(rec.blockedUntil && Date.now()<rec.blockedUntil){
     const retryAt = rec.blockedUntil;
     return res.status(429).json({error:'rate_limited', retryAt});
   }
-  if(email===ADMIN_EMAIL && password===ADMIN_PASSWORD){
+  if(email===ADMIN_EMAIL && password===currentAdminPwd){
     loginAttempts.delete(cid);
     try{
       const now=Date.now();
@@ -422,6 +459,35 @@ app.post('/api/admin/login', (req,res)=>{
   if(rec.count>=5){ rec.blockedUntil = Date.now()+10*60*1000; rec.count=0; }
   loginAttempts.set(cid, rec);
   return res.status(401).json({error:'invalid-credentials'});
+});
+
+app.post('/api/admin/change-password', requireAdmin, async (req,res)=>{
+  try{
+    const { currentPassword, newPassword } = req.body||{};
+    if(!currentPassword || !newPassword){
+      return res.status(400).json({error:'current_and_new_password_required', message:'Current and new passwords are required'});
+    }
+    try{ await refreshAdminAuthFromStore(); }catch{}
+    const currentAdminPwd = getAdminPassword();
+    if(String(currentPassword) !== String(currentAdminPwd)){
+      return res.status(400).json({error:'incorrect_current_password', message:'Current password is incorrect'});
+    }
+    const cleanNew = String(newPassword).trim();
+    if(cleanNew.length < 6){
+      return res.status(400).json({error:'weak_password', message:'New password must be at least 6 characters long'});
+    }
+
+    dynamicAdminAuth = {
+      password: cleanNew,
+      updatedAt: Date.now()
+    };
+    saveAuthFS(dynamicAdminAuth);
+    await upSet('hc:admin_auth', dynamicAdminAuth);
+
+    return res.json({ok:true, message:'Password updated successfully!'});
+  }catch(e){
+    return res.status(500).json({error:'server-error', message:'Failed to update password'});
+  }
 });
 
 app.get('/api/admin/me', (req,res)=>{
@@ -450,7 +516,12 @@ app.get('/api/admin/debug/telegram-config', requireAdmin, (req,res)=>{
 });
 
 app.get('/api/menu-overrides', (req,res)=>{
-  refreshOverridesFromStore().finally(()=>{ res.json(overrides||{}); });
+  refreshOverridesFromStore().finally(()=>{
+    res.set('Cache-Control', 'public, max-age=5, stale-while-revalidate=15');
+    const safe = { ...(overrides || {}) };
+    delete safe.adminPassword;
+    res.json(safe);
+  });
 });
 
 // Debug helpers (no secrets) to verify persistence state
@@ -557,7 +628,7 @@ app.get('/api/admin/orders/stream', (req,res)=>{
   const init = {type:'init', orders:orders.slice().sort((a,b)=>b.createdAt-a.createdAt)};
   res.write(`data: ${JSON.stringify(init)}\n\n`);
   orderClients.add(res);
-  const HEARTBEAT_MS = 5*60*1000;
+  const HEARTBEAT_MS = 25*1000;
   const heartbeat = setInterval(()=>{
     try{
       res.write(`: ping\n\n`);
@@ -710,13 +781,97 @@ app.get('/api/admin/refund-status/:id', requireAdmin, async (req,res)=>{
 });
 
 app.post('/api/admin/add-item', requireAdmin, (req,res)=>{
-  const { id, name, price, veg, category } = req.body||{};
+  const { id, name, price, veg, category, image, featured } = req.body||{};
   if(!name || price==null) return res.status(400).json({error:'name and price required'});
-  const item = { id: id||String(Date.now()), name, price:Number(price||0), veg:!!veg, category:category||'Misc', available:true };
+  const itemId = id || String(Date.now());
+  const item = { id: itemId, name: String(name).trim(), price: Number(price||0), veg: !!veg, category: category||'Misc', available: true };
+  if(image && typeof image === 'string' && image.trim()){
+    item.image = image.trim();
+    overrides.images = overrides.images || {};
+    overrides.images[itemId] = item.image;
+  }
   overrides.added = Array.isArray(overrides.added)?overrides.added:[];
   overrides.added.push(item);
+
+  if(featured === true){
+    overrides.featured = Array.isArray(overrides.featured) ? overrides.featured : [];
+    if(!overrides.featured.includes(itemId)){
+      overrides.featured.push(itemId);
+    }
+  }
+
   saveOverrides(overrides);
-  res.json({ok:true, item});
+  res.json({ok:true, item, overrides});
+});
+
+app.post('/api/admin/edit-item', requireAdmin, (req,res)=>{
+  const { id, name, price, veg, category, image, featured } = req.body||{};
+  if(!id) return res.status(400).json({error:'id required'});
+
+  overrides.edited = overrides.edited || {};
+  const prevEdit = overrides.edited[id] || {};
+  const updatedEdit = { ...prevEdit };
+
+  if(name != null) updatedEdit.name = String(name).trim();
+  if(price != null) updatedEdit.price = Number(price);
+  if(veg != null) updatedEdit.veg = !!veg;
+  if(category != null) updatedEdit.category = String(category).trim();
+  if(image !== undefined){
+    const cleanImg = typeof image === 'string' ? image.trim() : '';
+    if(cleanImg){
+      updatedEdit.image = cleanImg;
+      overrides.images = overrides.images || {};
+      overrides.images[id] = cleanImg;
+    } else {
+      delete updatedEdit.image;
+      if(overrides.images){
+        delete overrides.images[id];
+      }
+    }
+  }
+
+  overrides.edited[id] = updatedEdit;
+
+  // Also update in overrides.added if this item was added via admin
+  if(Array.isArray(overrides.added)){
+    const idx = overrides.added.findIndex(x=>x.id===id);
+    if(idx !== -1){
+      overrides.added[idx] = { ...overrides.added[idx], ...updatedEdit };
+    }
+  }
+
+  // Handle featured toggle if provided
+  if(featured !== undefined){
+    overrides.featured = Array.isArray(overrides.featured) ? overrides.featured : [];
+    if(featured && !overrides.featured.includes(id)){
+      overrides.featured.push(id);
+    } else if(!featured && overrides.featured.includes(id)){
+      overrides.featured = overrides.featured.filter(x=>x !== id);
+    }
+  }
+
+  saveOverrides(overrides);
+  res.json({ok:true, id, item: updatedEdit, overrides});
+});
+
+app.post('/api/admin/set-featured', requireAdmin, (req,res)=>{
+  const { featured, id, isFeatured } = req.body||{};
+  overrides.featured = Array.isArray(overrides.featured) ? overrides.featured : [];
+
+  if(Array.isArray(featured)){
+    overrides.featured = featured.filter(Boolean);
+  } else if(id && isFeatured !== undefined){
+    if(isFeatured && !overrides.featured.includes(id)){
+      overrides.featured.push(id);
+    } else if(!isFeatured && overrides.featured.includes(id)){
+      overrides.featured = overrides.featured.filter(x=>x !== id);
+    }
+  } else {
+    return res.status(400).json({error:'featured array or id with isFeatured required'});
+  }
+
+  saveOverrides(overrides);
+  res.json({ok:true, featured: overrides.featured, overrides});
 });
 
 app.post('/api/admin/remove-item', requireAdmin, (req,res)=>{
@@ -724,8 +879,26 @@ app.post('/api/admin/remove-item', requireAdmin, (req,res)=>{
   if(!id) return res.status(400).json({error:'id required'});
   overrides.removed = Array.isArray(overrides.removed)?overrides.removed:[];
   if(!overrides.removed.includes(id)) overrides.removed.push(id);
+  if(Array.isArray(overrides.featured)){
+    overrides.featured = overrides.featured.filter(x=>x !== id);
+  }
+  if(overrides.images && overrides.images[id]){
+    delete overrides.images[id];
+  }
+  if(overrides.edited && overrides.edited[id]){
+    delete overrides.edited[id];
+  }
   saveOverrides(overrides);
   res.json({ok:true});
+});
+
+app.post('/api/admin/restore-item', requireAdmin, (req,res)=>{
+  const { id } = req.body||{};
+  if(!id) return res.status(400).json({error:'id required'});
+  overrides.removed = Array.isArray(overrides.removed)?overrides.removed:[];
+  overrides.removed = overrides.removed.filter(x=>x !== id);
+  saveOverrides(overrides);
+  res.json({ok:true, overrides});
 });
 
 function parseCoordsFromUrl(u){

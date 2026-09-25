@@ -1,11 +1,14 @@
 import React, { useEffect, useMemo, useState } from "react";
-import data from "../data/menu.json";
+import { getMenu } from "../utils/menu.js";
 import { UPI_ID, MERCHANT_NAME, BACKEND_URL, CAFE_LAT, CAFE_LNG } from "../config";
 import { generateOrderId } from "../utils/order";
 import { buildUpiIntent } from "../utils/upi";
 
 export default function Checkout({cart, setCart, onBack, onSubmit}){
-  const items=useMemo(()=>Object.entries(cart).map(([id,q])=>{const it=data.items.find(x=>x.id===id);return it?{item:it,qty:q}:null;}).filter(Boolean),[cart]);
+  const items=useMemo(()=>{
+    const menu = getMenu();
+    return Object.entries(cart).map(([id,q])=>{const it=menu.items.find(x=>x.id===id);return it?{item:it,qty:q}:null;}).filter(Boolean);
+  },[cart]);
   const total = items.reduce((s, x) => s + x.item.price * x.qty, 0);
   const [name,setName]=useState("");
   const [phone,setPhone]=useState("");
@@ -252,16 +255,15 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
     setResolvedCoord(null);
     const local = parseManualCoords(manualLink);
     if(local){ setResolvedCoord(local); return; }
-    async function resolve(){
+    if(!isValidManualLink(manualLink)) return;
+    const timer = setTimeout(async ()=>{
       try{
-        if(isValidManualLink(manualLink)){
-          const r = await fetch(`${BACKEND_URL}/api/resolve-maps`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:manualLink})});
-          const d = await r.json();
-          if(r.ok && d.coord) setResolvedCoord(d.coord);
-        }
+        const r = await fetch(`${BACKEND_URL}/api/resolve-maps`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:manualLink})});
+        const d = await r.json();
+        if(r.ok && d.coord) setResolvedCoord(d.coord);
       }catch{}
-    }
-    resolve();
+    }, 450);
+    return () => clearTimeout(timer);
   },[manualLink]);
 
 
