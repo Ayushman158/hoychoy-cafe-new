@@ -1500,7 +1500,10 @@ app.post('/api/initiate-payment', async (req,res)=>{
       return res.status(409).json({error:'price-changed', expected: priced.grandTotal, message:`Prices have been updated. Your new total is ₹${priced.grandTotal}.`});
     }
     const client = getSdkClient();
-    if(!client) return res.status(500).json({error:'sdk-not-configured'});
+    if(!client){
+      console.log('initiate_payment_failed PHONEPE_CLIENT_ID / PHONEPE_CLIENT_SECRET not set');
+      return res.status(503).json({error:'payments-not-configured', message:'Online payment is temporarily unavailable. Please order on WhatsApp or try again later.'});
+    }
     const paisa = Math.round(Number(amount)*100);
     const metaInfo = MetaInfo.builder()
       .udf1(String(customerPhone||''))
