@@ -42,7 +42,7 @@ export default function Menu({cart, setCart, onProceed}){
   const [appOpen,setAppOpen]=useState(true);
   const [appReason,setAppReason]=useState('OPEN');
   const [statusLoading,setStatusLoading]=useState(true);
-  const DEFAULT_CLOSING_MSG = '😔 Sorry, our restaurant is closed today. Online orders are available 12:00–9:00 PM.';
+  const DEFAULT_CLOSING_MSG = 'Sorry, our restaurant is closed today. Online orders are available 12:00–9:00 PM.';
   const [closingMsg,setClosingMsg]=useState("");
   const headerRef = useRef(null);
   const [headerH,setHeaderH] = useState(0);
@@ -275,19 +275,7 @@ const NonVegIcon = () => (
           </div>
         </div>
         {!query.trim() && bestSellers.length > 0 && (
-        <div className="mt-4 mb-4">
-          <div className="flex items-center justify-between mb-2 px-1">
-            <div>
-              <div className="text-base font-extrabold flex items-center gap-1.5 text-white">
-                <span className="text-[#f5c84a]">⭐</span>
-                <span>Front Showcased Dishes</span>
-              </div>
-              <p className="text-xs text-muted">Chef's highlights & spotlight favorites</p>
-            </div>
-            <span className="text-[11px] bg-[#f5c84a]/15 text-[#f5c84a] font-bold px-2 py-0.5 rounded-full border border-[#f5c84a]/30">
-              {bestSellers.length} Spotlighted
-            </span>
-          </div>
+        <div className="mt-2 mb-4">
           <div className="overflow-x-auto flex gap-3 snap-x snap-mandatory pb-3 px-1 scrollbar-thin">
             {bestSellers.map(item=> {
               const imgUrl = getItemImage(item.id, item, overrides);
@@ -304,13 +292,13 @@ const NonVegIcon = () => (
                       />
                     ) : (
                       <div className="w-full h-36 bg-gradient-to-br from-[#222] via-[#181818] to-[#101010] flex flex-col items-center justify-center p-3 text-center border-b border-[#222]">
-                        <span className="text-3xl mb-1">{item.veg ? '🥗' : '🍖'}</span>
+                        <div className="mb-1.5">{item.veg ? <VegIcon /> : <NonVegIcon />}</div>
                         <span className="text-[10px] text-muted font-semibold uppercase tracking-wider">{item.category}</span>
                       </div>
                     )}
                     <div className="absolute top-2 left-2 right-2 flex items-center justify-between pointer-events-none">
-                      <span className="bg-black/80 backdrop-blur-md text-[10px] font-bold px-2 py-0.5 rounded-full text-[#f5c84a] border border-[#f5c84a]/30 flex items-center gap-1">
-                        ⭐ Spotlight
+                      <span className="bg-black/80 backdrop-blur-md text-[10px] font-bold px-2 py-0.5 rounded-full text-[#f5c84a] border border-[#f5c84a]/30">
+                        Spotlight
                       </span>
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full backdrop-blur-md ${item.available ? 'bg-[#182618] text-success border border-[#2e5e2e]' : 'bg-[#261818] text-error border border-[#5e2e2e]'}`}>
                         {item.available ? 'In Stock' : 'Out'}
@@ -366,8 +354,8 @@ const NonVegIcon = () => (
                     onError={(e)=>{ e.currentTarget.style.display='none'; }}
                   />
                 ) : (
-                  <div className="w-16 h-16 rounded-xl bg-[#181818] border border-[#222] flex flex-col items-center justify-center flex-shrink-0">
-                    <span className="text-xl">{item.veg ? '🥗' : '🍖'}</span>
+                  <div className="w-16 h-16 rounded-xl bg-[#181818] border border-[#222] flex items-center justify-center flex-shrink-0">
+                    {item.veg ? <VegIcon /> : <NonVegIcon />}
                   </div>
                 )}
                 <div className="flex flex-col gap-0.5 min-w-0">

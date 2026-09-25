@@ -804,6 +804,119 @@ app.post('/api/admin/add-item', requireAdmin, (req,res)=>{
   res.json({ok:true, item, overrides});
 });
 
+app.post('/api/admin/bulk-items', requireAdmin, (req,res)=>{
+  try{
+    const { items, mode } = req.body||{};
+    if(!Array.isArray(items) || items.length === 0){
+      return res.status(400).json({error:'items_array_required', message:'No items provided for bulk upload'});
+    }
+
+    // Load base items from menu.json if present
+    let baseItemIds = new Set();
+    try{
+      const menuJsonPath = path.join(__dirname, '../src/data/menu.json');
+      if(fs.existsSync(menuJsonPath)){
+        const raw = fs.readFileSync(menuJsonPath, 'utf8');
+        const parsed = JSON.parse(raw);
+        if(Array.isArray(parsed?.items)){
+          parsed.items.forEach(it => { if(it && it.id) baseItemIds.add(it.id); });
+        }
+      }
+    }catch(err){
+      console.warn('[BulkItems] Notice: base menu.json could not be loaded:', err.message);
+    }
+
+    overrides.added = Array.isArray(overrides.added) ? overrides.added : [];
+    overrides.edited = (overrides.edited && typeof overrides.edited === 'object') ? overrides.edited : {};
+    overrides.availability = (overrides.availability && typeof overrides.availability === 'object') ? overrides.availability : {};
+    overrides.featured = Array.isArray(overrides.featured) ? overrides.featured : [];
+    overrides.images = (overrides.images && typeof overrides.images === 'object') ? overrides.images : {};
+    overrides.removed = Array.isArray(overrides.removed) ? overrides.removed : [];
+
+    let addedCount = 0;
+    let updatedCount = 0;
+
+    for(const it of items){
+      const id = String(it.id||'').trim();
+      const name = String(it.name||'').trim();
+      if(!id || !name) continue;
+
+      const price = Number(it.price != null ? it.price : 0);
+      const veg = !!it.veg;
+      const category = String(it.category||'Misc').trim();
+      const available = it.available !== undefined ? !!it.available : true;
+      const featured = !!it.featured;
+      const image = typeof it.image === 'string' ? it.image.trim() : '';
+
+      // Un-remove if it was previously removed
+      overrides.removed = overrides.removed.filter(x => x !== id);
+
+      const isBase = baseItemIds.has(id);
+      const existingAddedIdx = overrides.added.findIndex(x => x.id === id);
+
+      if(isBase){
+        overrides.edited[id] = {
+          name,
+          price,
+          veg,
+          category,
+          ...(image ? { image } : {})
+        };
+        updatedCount++;
+      } else if(existingAddedIdx !== -1){
+        overrides.added[existingAddedIdx] = {
+          id,
+          name,
+          price,
+          veg,
+          category,
+          available,
+          ...(image ? { image } : {})
+        };
+        updatedCount++;
+      } else {
+        // Brand new dish
+        overrides.added.push({
+          id,
+          name,
+          price,
+          veg,
+          category,
+          available,
+          ...(image ? { image } : {})
+        });
+        addedCount++;
+      }
+
+      // Update availability
+      overrides.availability[id] = available;
+
+      // Update featured
+      if(featured && !overrides.featured.includes(id)){
+        overrides.featured.push(id);
+      } else if(!featured && overrides.featured.includes(id)){
+        overrides.featured = overrides.featured.filter(x => x !== id);
+      }
+
+      // Update image
+      if(image){
+        overrides.images[id] = image;
+      }
+    }
+
+    saveOverrides(overrides);
+    return res.json({
+      ok: true,
+      message: `Bulk update successful: ${addedCount} added, ${updatedCount} updated (${items.length} total processed)`,
+      addedCount,
+      updatedCount,
+      overrides
+    });
+  }catch(e){
+    return res.status(500).json({error:'server-error', message:e.message});
+  }
+});
+
 app.post('/api/admin/edit-item', requireAdmin, (req,res)=>{
   const { id, name, price, veg, category, image, featured } = req.body||{};
   if(!id) return res.status(400).json({error:'id required'});

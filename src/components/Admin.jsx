@@ -1,6 +1,28 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { getMenu, makeIdFromName, fetchBackendOverridesAndCache, saveBackendOverrides } from "../utils/menu.js";
+import {
+  getMenu,
+  makeIdFromName,
+  fetchBackendOverridesAndCache,
+  saveBackendOverrides,
+  generateMenuCSV,
+  downloadCSV,
+  parseMenuCSV
+} from "../utils/menu.js";
 import { BACKEND_URL, OWNER_PHONE } from "../config.js";
+
+const VegIcon = () => (
+  <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 flex-shrink-0 inline-block" fill="none" strokeWidth="2">
+    <rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" className="text-success" />
+    <circle cx="12" cy="12" r="4" fill="currentColor" className="text-success" />
+  </svg>
+);
+
+const NonVegIcon = () => (
+  <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 flex-shrink-0 inline-block" fill="none" strokeWidth="2">
+    <rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" className="text-error" />
+    <polygon points="12,7 17,16 7,16" fill="currentColor" className="text-error" />
+  </svg>
+);
 
 export default function Admin(){
   const [token,setToken]=useState(()=>localStorage.getItem('hc_admin_token')||'');
@@ -36,6 +58,14 @@ export default function Admin(){
   const [menuFilterCategory,setMenuFilterCategory]=useState("");
   const [featSelectId,setFeatSelectId]=useState("");
   const [showRemovedList,setShowRemovedList]=useState(false);
+
+  // Bulk CSV Upload & Download state
+  const [csvPreviewItems, setCsvPreviewItems] = useState(null);
+  const [csvErrors, setCsvErrors] = useState([]);
+  const [csvUploading, setCsvUploading] = useState(false);
+  const [csvMsg, setCsvMsg] = useState("");
+  const [showCsvModal, setShowCsvModal] = useState(false);
+  const [csvStats, setCsvStats] = useState({ total: 0, newCount: 0, updateCount: 0 });
 
   // Admin Password Change state
   const [pwdCurrent,setPwdCurrent]=useState("");
@@ -482,6 +512,108 @@ export default function Admin(){
     }
   }
 
+  function handleDownloadCurrentCSV(){
+    try{
+      const currentItems = items || [];
+      const currentFeat = Array.isArray(overrides?.featured) ? overrides.featured : [];
+      const csvText = generateMenuCSV(currentItems, currentFeat);
+      const dateStr = new Date().toISOString().slice(0, 10);
+      downloadCSV(csvText, `hoychoy_menu_${dateStr}.csv`);
+      setMsg("Menu CSV downloaded! Open in Excel/Sheets to edit or add new items.");
+    }catch(err){
+      setMsg("Failed to download CSV: " + err.message);
+    }
+  }
+
+  function handleDownloadTemplateCSV(){
+    try{
+      const csvText = generateMenuCSV([], []);
+      downloadCSV(csvText, `hoychoy_menu_template.csv`);
+      setMsg("Sample template CSV downloaded!");
+    }catch(err){
+      setMsg("Failed to download template: " + err.message);
+    }
+  }
+
+  function handleCsvFileSelect(e){
+    const file = e.target.files && e.target.files[0];
+    if(!file) return;
+    setCsvMsg("");
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try{
+        const text = event.target.result;
+        const { items: parsedItems, errors, error } = parseMenuCSV(text);
+        if(error){
+          setCsvErrors([error]);
+          setCsvPreviewItems(null);
+          setShowCsvModal(true);
+          return;
+        }
+
+        const currentMap = new Map((items || []).map(it => [it.id, it]));
+        let newCount = 0;
+        let updateCount = 0;
+
+        parsedItems.forEach(it => {
+          if(currentMap.has(it.id)){
+            updateCount++;
+          }else{
+            newCount++;
+          }
+        });
+
+        setCsvStats({
+          total: parsedItems.length,
+          newCount,
+          updateCount
+        });
+        setCsvPreviewItems(parsedItems);
+        setCsvErrors(errors || []);
+        setShowCsvModal(true);
+      }catch(err){
+        setCsvErrors(["Failed to parse CSV file: " + err.message]);
+        setCsvPreviewItems(null);
+        setShowCsvModal(true);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  }
+
+  async function handleApplyBulkCsv(){
+    if(!csvPreviewItems || csvPreviewItems.length === 0) return;
+    setCsvUploading(true);
+    setCsvMsg("");
+    try{
+      const res = await authedFetch(`${BACKEND_URL}/api/admin/bulk-items`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ items: csvPreviewItems })
+      });
+      const data = await res.json();
+      if(!res.ok || !data.ok){
+        throw new Error(data?.message || data?.error || 'Bulk upload failed');
+      }
+
+      await refreshOverrides();
+
+      setCsvMsg(`Success: ${data.message || `Uploaded ${csvPreviewItems.length} dishes`}`);
+      setMsg(`Bulk upload completed: ${csvStats.newCount} new dishes added, ${csvStats.updateCount} dishes updated!`);
+      setTimeout(() => {
+        setShowCsvModal(false);
+        setCsvPreviewItems(null);
+      }, 1200);
+    }catch(err){
+      setCsvMsg("Error uploading menu: " + err.message);
+    }finally{
+      setCsvUploading(false);
+    }
+  }
+
   async function addItem(e){
     e.preventDefault(); setMsg("");
     const id = makeIdFromName(name||'item');
@@ -688,7 +820,7 @@ export default function Admin(){
       <div className="card mt-3">
         <div className="section-title flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <span>🔐 Admin Security & Password</span>
+            <span>Admin Security & Password</span>
           </div>
           <span className="text-xs text-muted font-normal">Account: {email || 'hoychoycafe@gmail.com'}</span>
         </div>
@@ -696,7 +828,7 @@ export default function Admin(){
 
         {pwdMsg && (
           <div className={`p-3 rounded-xl mb-3 text-xs flex items-center gap-2 border ${pwdSuccess ? 'bg-[#182618] border-success text-success' : 'bg-[#261818] border-error text-error'}`}>
-            <span>{pwdSuccess ? '✓' : '⚠️'}</span>
+            <span>{pwdSuccess ? '✓' : '✕'}</span>
             <span>{pwdMsg}</span>
           </div>
         )}
@@ -779,7 +911,7 @@ export default function Admin(){
               className={`btn btn-primary font-bold px-5 py-2 text-xs flex items-center gap-2 ${pwdLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
               disabled={pwdLoading}
             >
-              {pwdLoading ? 'Updating Password…' : '🔑 Change Password'}
+              {pwdLoading ? 'Updating Password…' : 'Change Password'}
             </button>
           </div>
         </form>
@@ -1010,7 +1142,7 @@ export default function Admin(){
       <div className="card mt-3">
         <div className="section-title flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <span>⭐ Front Showcased Dishes (Homepage Spotlight)</span>
+            <span>Front Showcased Dishes (Homepage Spotlight)</span>
           </div>
           {(() => {
             const featIds = Array.isArray(overrides?.featured) && overrides.featured.length > 0 ? overrides.featured : [];
@@ -1040,7 +1172,7 @@ export default function Admin(){
                         {imgUrl ? (
                           <img src={imgUrl} alt={f.name} className="w-6 h-6 rounded-md object-cover" onError={(e)=>{ e.currentTarget.style.display='none'; }} />
                         ) : (
-                          <span className="text-xs">{f.veg ? '🥗' : '🍖'}</span>
+                          <span className="flex items-center">{f.veg ? <VegIcon /> : <NonVegIcon />}</span>
                         )}
                         <span className="text-xs font-semibold text-white">{f.name}</span>
                         <span className="text-xs text-[#f5c84a] font-bold">₹{f.price}</span>
@@ -1135,6 +1267,57 @@ export default function Admin(){
           </div>
         </div>
 
+        {/* Bulk CSV Menu Upload & Download Bar */}
+        <div className="p-3 mb-3 bg-[#151515] border border-[#262626] rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <div className="text-xs font-bold text-white flex items-center gap-1.5">
+              <span>Bulk Menu Management (.CSV)</span>
+            </div>
+            <p className="text-[11px] text-muted mt-0.5">
+              Download the current menu spreadsheet to edit prices or add dishes in Excel/Sheets, then upload to update in bulk.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
+            <button
+              type="button"
+              className="btn btn-secondary text-xs px-3 py-1.5 flex items-center gap-1.5 font-semibold bg-[#202020] hover:bg-[#282828] border border-[#333] text-white rounded-lg shadow-sm"
+              onClick={handleDownloadCurrentCSV}
+              title="Download all dishes formatted for Excel or Google Sheets"
+            >
+              <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              <span>Download Menu (.CSV)</span>
+            </button>
+
+            <label className="btn btn-primary text-xs px-3 py-1.5 flex items-center gap-1.5 font-bold rounded-lg shadow-md cursor-pointer hover:scale-105 active:scale-95 transition">
+              <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+              <span>Upload CSV (Bulk Menu)</span>
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                className="hidden"
+                onChange={handleCsvFileSelect}
+              />
+            </label>
+
+            <button
+              type="button"
+              className="text-[11px] text-muted hover:text-[#f5c84a] px-1 py-1 underline"
+              onClick={handleDownloadTemplateCSV}
+              title="Download empty sample template CSV"
+            >
+              Sample Template
+            </button>
+          </div>
+        </div>
+
         <ul className="flex flex-col gap-2 max-h-[460px] overflow-auto pr-1">
           {(items||[]).filter(it=>{
             const matchQ = it.name.toLowerCase().includes(query.toLowerCase()) || (it.category||'').toLowerCase().includes(query.toLowerCase());
@@ -1151,8 +1334,8 @@ export default function Admin(){
                   {imgUrl ? (
                     <img src={imgUrl} alt={it.name} className="w-11 h-11 rounded-lg object-cover flex-shrink-0 border border-[#2e2e2e]" onError={(e)=>{ e.currentTarget.style.display='none'; }} />
                   ) : (
-                    <div className="w-11 h-11 rounded-lg bg-[#1a1a1a] border border-[#2e2e2e] flex items-center justify-center flex-shrink-0 text-sm">
-                      {it.veg ? '🥗' : '🍖'}
+                    <div className="w-11 h-11 rounded-lg bg-[#1a1a1a] border border-[#2e2e2e] flex items-center justify-center flex-shrink-0">
+                      {it.veg ? <VegIcon /> : <NonVegIcon />}
                     </div>
                   )}
                   <div className="flex flex-col min-w-0">
@@ -1160,7 +1343,7 @@ export default function Admin(){
                       <span className="font-bold text-sm text-white truncate">{it.name}</span>
                       {isFeat && (
                         <span className="bg-[#f5c84a]/20 text-[#f5c84a] text-[10px] px-1.5 py-0.5 rounded-full font-bold border border-[#f5c84a]/30">
-                          ⭐ Front Spotlight
+                          Front Spotlight
                         </span>
                       )}
                     </div>
@@ -1212,7 +1395,7 @@ export default function Admin(){
                               setInlinePrice(String(it.price));
                             }}
                           >
-                            ✏️ Edit Price
+                            Edit Price
                           </button>
                         </div>
                       )}
@@ -1233,7 +1416,7 @@ export default function Admin(){
                     onClick={() => toggleFeatured(it.id, !isFeat)}
                     title={isFeat ? "Remove from front showcase" : "Showcase this dish on the front page"}
                   >
-                    {isFeat ? '⭐ Spotlight' : '☆ Spotlight'}
+                    {isFeat ? '★ Spotlight' : '+ Spotlight'}
                   </button>
 
                   {/* Full Edit button */}
@@ -1243,7 +1426,7 @@ export default function Admin(){
                     onClick={() => startEdit(it)}
                     title="Edit dish name, price, diet, category, and photo"
                   >
-                    ✏️ Edit
+                    Edit
                   </button>
 
                   {/* Stock Toggle */}
@@ -1285,7 +1468,7 @@ export default function Admin(){
               className="text-xs text-muted hover:text-white flex items-center justify-between w-full p-1"
               onClick={() => setShowRemovedList(s => !s)}
             >
-              <span>🗑️ Removed Dishes ({overrides.removed.length})</span>
+              <span>Removed Dishes ({overrides.removed.length})</span>
               <span>{showRemovedList ? '▲ Hide' : '▼ View & Restore'}</span>
             </button>
 
@@ -1374,14 +1557,14 @@ export default function Admin(){
             <div>
               <label className="text-[11px] text-muted block mb-0.5">Diet Type</label>
               <select className="w-full bg-[#111] border border-[#222] rounded-xl p-2 text-sm" value={veg?'veg':'nonveg'} onChange={e=>setVeg(e.target.value==='veg')}>
-                <option value="veg">🟢 Veg</option>
-                <option value="nonveg">🔴 Non-Veg</option>
+                <option value="veg">Veg</option>
+                <option value="nonveg">Non-Veg</option>
               </select>
             </div>
             <div className="flex items-end">
               <label className="flex items-center gap-2 text-xs bg-[#111] border border-[#222] rounded-xl px-3 py-2.5 cursor-pointer w-full">
                 <input type="checkbox" className="w-4 h-4 rounded text-[#f5c84a]" checked={addFeatured} onChange={e=>setAddFeatured(e.target.checked)} />
-                <span className="font-semibold text-white">⭐ Spotlight on Front Page</span>
+                <span className="font-semibold text-white">Spotlight on Front Page</span>
               </label>
             </div>
           </div>
@@ -1413,9 +1596,8 @@ export default function Admin(){
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" role="dialog" aria-modal="true">
           <div className="bg-[#121212] border border-[#2e2e2e] rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-5 shadow-2xl">
             <div className="flex items-center justify-between pb-3 border-b border-[#222] mb-4">
-              <h3 className="font-bold text-lg text-white flex items-center gap-2">
-                <span>✏️</span>
-                <span>Edit Menu Dish</span>
+              <h3 className="font-bold text-lg text-white">
+                Edit Menu Dish
               </h3>
               <button type="button" className="text-gray-400 hover:text-white text-xl px-2 py-1" onClick={()=>setEditingItem(null)}>✕</button>
             </div>
@@ -1432,8 +1614,8 @@ export default function Admin(){
                 <div>
                   <label className="text-xs text-muted block mb-1">Diet Type</label>
                   <select className="w-full bg-[#181818] border border-[#2e2e2e] rounded-xl p-2.5 text-sm" value={editingItem.veg ? 'veg' : 'nonveg'} onChange={e=>setEditingItem(s=>({...s, veg: e.target.value==='veg'}))}>
-                    <option value="veg">🟢 Veg</option>
-                    <option value="nonveg">🔴 Non-Veg</option>
+                    <option value="veg">Veg</option>
+                    <option value="nonveg">Non-Veg</option>
                   </select>
                 </div>
               </div>
@@ -1501,7 +1683,7 @@ export default function Admin(){
                   onChange={e=>setEditingItem(s=>({...s, featured: e.target.checked}))}
                 />
                 <div className="flex flex-col text-xs">
-                  <span className="font-semibold text-white">⭐ Showcase on Front Page Spotlight</span>
+                  <span className="font-semibold text-white">Showcase on Front Page Spotlight</span>
                   <span className="text-muted">Display this item prominently in the top carousel on the homepage</span>
                 </div>
               </label>
@@ -1632,6 +1814,146 @@ export default function Admin(){
               </div>
             </div>
           )}
+
+      {/* Bulk CSV Preview & Confirmation Modal */}
+      {showCsvModal && (
+        <div className="fixed inset-0 z-[120] bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto" role="dialog" aria-modal="true">
+          <div className="bg-[#141414] border border-[#2e2e2e] rounded-2xl w-full max-w-2xl p-4 sm:p-5 shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between pb-3 border-b border-[#222]">
+              <div>
+                <h3 className="text-base font-bold text-white">Bulk Menu Upload Preview</h3>
+                <p className="text-xs text-muted">Review the dishes parsed from your CSV file before applying changes.</p>
+              </div>
+              <button
+                type="button"
+                className="text-gray-400 hover:text-white p-1 rounded-lg text-lg"
+                onClick={() => { setShowCsvModal(false); setCsvPreviewItems(null); }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Error alerts */}
+            {csvErrors.length > 0 && (
+              <div className="my-3 p-3 rounded-xl bg-[#2b1818] border border-error text-error text-xs flex flex-col gap-1 max-h-32 overflow-auto">
+                <div className="font-bold flex items-center gap-1.5">
+                  <span>Notice / Errors encountered:</span>
+                </div>
+                {csvErrors.map((err, i) => (
+                  <div key={i}>• {err}</div>
+                ))}
+              </div>
+            )}
+
+            {/* Status Msg */}
+            {csvMsg && (
+              <div className="my-3 p-3 rounded-xl bg-[#182618] border border-success text-success text-xs font-semibold">
+                {csvMsg}
+              </div>
+            )}
+
+            {/* Stats summary */}
+            {csvPreviewItems && (
+              <div className="grid grid-cols-3 gap-2 my-3">
+                <div className="bg-[#1b1b1b] border border-[#2a2a2a] p-2.5 rounded-xl text-center">
+                  <div className="text-xs text-muted">Total Dishes</div>
+                  <div className="text-base font-extrabold text-white">{csvStats.total}</div>
+                </div>
+                <div className="bg-[#1b1b1b] border border-[#2a2a2a] p-2.5 rounded-xl text-center">
+                  <div className="text-xs text-muted">New Dishes</div>
+                  <div className="text-base font-extrabold text-success">+{csvStats.newCount}</div>
+                </div>
+                <div className="bg-[#1b1b1b] border border-[#2a2a2a] p-2.5 rounded-xl text-center">
+                  <div className="text-xs text-muted">Updated</div>
+                  <div className="text-base font-extrabold text-[#f5c84a]">{csvStats.updateCount}</div>
+                </div>
+              </div>
+            )}
+
+            {/* Scrollable list of items */}
+            {csvPreviewItems && csvPreviewItems.length > 0 ? (
+              <div className="flex-1 overflow-y-auto pr-1 my-2 border border-[#222] rounded-xl bg-[#101010]">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-[#181818] text-muted sticky top-0 border-b border-[#222]">
+                    <tr>
+                      <th className="p-2.5">Dish</th>
+                      <th className="p-2.5">Category</th>
+                      <th className="p-2.5">Price</th>
+                      <th className="p-2.5">Diet</th>
+                      <th className="p-2.5">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#1e1e1e]">
+                    {csvPreviewItems.map((it, idx) => {
+                      const isExisting = (items || []).some(existing => existing.id === it.id);
+                      return (
+                        <tr key={it.id || idx} className="hover:bg-[#161616]">
+                          <td className="p-2.5 font-semibold text-white">
+                            <div className="truncate max-w-[180px]">{it.name}</div>
+                            <div className="text-[10px] text-muted font-mono">{it.id}</div>
+                          </td>
+                          <td className="p-2.5 text-gray-300">{it.category}</td>
+                          <td className="p-2.5 font-bold text-[#f5c84a]">₹{it.price}</td>
+                          <td className="p-2.5">
+                            <span className="flex items-center gap-1">
+                              {it.veg ? <VegIcon /> : <NonVegIcon />}
+                              <span className={it.veg ? 'text-success' : 'text-error'}>{it.veg ? 'Veg' : 'Non-Veg'}</span>
+                            </span>
+                          </td>
+                          <td className="p-2.5">
+                            {isExisting ? (
+                              <span className="text-[10px] bg-[#f5c84a]/15 text-[#f5c84a] px-2 py-0.5 rounded-full font-bold">
+                                Update
+                              </span>
+                            ) : (
+                              <span className="text-[10px] bg-success/15 text-success px-2 py-0.5 rounded-full font-bold">
+                                + New
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : !csvErrors.length ? (
+              <div className="p-6 text-center text-xs text-muted">
+                No items found to preview.
+              </div>
+            ) : null}
+
+            {/* Actions */}
+            <div className="flex items-center justify-between gap-2 pt-3 mt-2 border-t border-[#222]">
+              <button
+                type="button"
+                className="btn text-xs px-4 py-2 border border-[#333] hover:bg-[#222] rounded-xl text-gray-300"
+                onClick={() => { setShowCsvModal(false); setCsvPreviewItems(null); }}
+                disabled={csvUploading}
+              >
+                Cancel
+              </button>
+              {csvPreviewItems && csvPreviewItems.length > 0 && (
+                <button
+                  type="button"
+                  className="btn btn-primary text-xs px-5 py-2 font-bold rounded-xl shadow-lg flex items-center gap-2 disabled:opacity-50"
+                  onClick={handleApplyBulkCsv}
+                  disabled={csvUploading}
+                >
+                  {csvUploading ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-black border-t-transparent rounded-full animate-spin"></div>
+                      <span>Saving Menu…</span>
+                    </>
+                  ) : (
+                    <span>Confirm & Save {csvPreviewItems.length} Dishes</span>
+                  )}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
