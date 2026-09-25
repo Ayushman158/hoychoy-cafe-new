@@ -833,6 +833,15 @@ export default function Admin(){
     setPwdLoading(false);
   }
 
+  const [ppCheck,setPpCheck]=useState(null);
+  const [ppChecking,setPpChecking]=useState(false);
+  async function checkPhonePe(){
+    setPpChecking(true); setPpCheck(null);
+    try{ const r=await authedFetch(`${BACKEND_URL}/api/admin/phonepe-check`); setPpCheck(await r.json()); }
+    catch{ setPpCheck({ ok:false, login:{ code:'NETWORK', message:'Could not reach the server' } }); }
+    setPpChecking(false);
+  }
+
   async function loadTelegramConfig(){
     try{
       const r = await authedFetch(`${BACKEND_URL}/api/admin/debug/telegram-config`);
@@ -1657,6 +1666,20 @@ export default function Admin(){
             </button>
           </div>
         </form>
+      </div>
+      )}
+
+      {authed && tab==='settings' && (
+      <div className="card mt-3">
+        <div className="section-title">PhonePe Payments</div>
+        <p className="text-xs text-muted mb-2">If customers see "PhonePe is not responding", tap this and send a screenshot of the result to your developer.</p>
+        <button type="button" className="btn" onClick={checkPhonePe} disabled={ppChecking}>{ppChecking?'Checking…':'Test PhonePe connection'}</button>
+        {ppCheck && (
+          <div className={`mt-3 p-3 rounded-xl text-xs border ${ppCheck.ok?'bg-success/10 border-success/40 text-success':'bg-error/10 border-error/40 text-error'}`}>
+            <div className="font-bold mb-1">{ppCheck.ok ? '✓ PhonePe login works' : '✕ PhonePe login failed'}</div>
+            <pre className="whitespace-pre-wrap break-all text-white/80">{JSON.stringify(ppCheck, null, 2)}</pre>
+          </div>
+        )}
       </div>
       )}
 

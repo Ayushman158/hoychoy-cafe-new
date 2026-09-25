@@ -198,6 +198,7 @@ function isValidSession(t){ if(!t) return false; const s=sessions.get(t); if(!s)
 
 let tokenCache = { token: '', expiresAt: 0 };
 let sdkClient = null;
+let lastPayError = null;
 async function phonepeApi(method, path, body){
   const token = await getAuthToken();
   if(!token) throw new Error('phonepe_auth_failed');
@@ -211,6 +212,7 @@ async function phonepeApi(method, path, body){
   if(r.status===401){ tokenCache = { token:'', expiresAt:0 }; }
   if(!r.ok){
     console.log('phonepe_api_error', method, path, r.status, JSON.stringify(data).slice(0,300));
+    lastPayError = { at: Date.now(), path, status: r.status, code: data?.code || data?.errorCode || null, message: data?.message || null };
     const e = new Error(data?.message || data?.code || `phonepe_http_${r.status}`); e.details = data; throw e;
   }
   return data;
@@ -254,9 +256,11 @@ function getSdkClient(){
   return sdkClient;
 }
 
+let lastOAuthError = null;
 async function getAuthToken(){
   try{
-    if(ACCESS_CODE) return ACCESS_CODE;
+    // The old SDK never used PHONEPE_ACCESS_CODE; a stale value there would
+    // break every payment, so it is deliberately ignored.
     const now = Math.floor(Date.now()/1000);
     if(tokenCache.token && tokenCache.expiresAt - 60 > now) return tokenCache.token;
     const url = process.env.PHONEPE_OAUTH_URL || (ENV==='PROD'
@@ -264,7 +268,7 @@ async function getAuthToken(){
       : 'https://api-preprod.phonepe.com/apis/pg-sandbox/v1/oauth/token');
     const body = new URLSearchParams({
       client_id: CLIENT_ID,
-      client_version: CLIENT_VERSION || '1',
+      client_version: CLIENT_VERSION || '4.0', // same default the old SDK used
       client_secret: CLIENT_SECRET,
       grant_type: 'client_credentials'
     }).toString();
@@ -272,11 +276,14 @@ async function getAuthToken(){
     const data = await res.json().catch(()=>({}));
     if(!res.ok || !data.access_token){
       console.log('phonepe_oauth_failed', res.status, JSON.stringify(data).slice(0,200));
+      lastOAuthError = { status: res.status, code: data?.code || data?.errorCode || null, message: data?.message || null };
       throw new Error('oauth_failed');
     }
+    lastOAuthError = null;
     tokenCache = { token: data.access_token, expiresAt: data.expires_at || (now+3600) };
     return tokenCache.token;
   }catch(e){
+    if(!lastOAuthError) lastOAuthError = { status: null, code: 'NETWORK', message: String(e && e.message || e) };
     return '';
   }
 }
@@ -1787,6 +1794,22 @@ app.post('/api/admin/order-update-status', requireAdmin, (req,res)=>{
   const o = setOrderStatus(id, upper, req.body);
   return o ? res.json({ok:true, order:o}) : res.status(404).json({error:'order-not-found'});
 });
+// Admin-only PhonePe self-test: checks credentials without creating an order.
+app.get('/api/admin/phonepe-check', requireAdmin, async (req,res)=>{
+  tokenCache = { token:'', expiresAt:0 };
+  const token = await getAuthToken();
+  res.json({
+    ok: !!token,
+    env: ENV,
+    clientIdSet: !!CLIENT_ID,
+    clientSecretSet: !!CLIENT_SECRET,
+    clientVersion: CLIENT_VERSION || '(not set, using 4.0)',
+    accessCodeEnvSet: !!ACCESS_CODE,
+    login: token ? 'OK' : (lastOAuthError || { code:'UNKNOWN' }),
+    lastPaymentError: lastPayError
+  });
+});
+
 // Owner can re-check a stuck "payment pending" order against PhonePe.
 app.post('/api/admin/order-verify-payment', requireAdmin, async (req,res)=>{
   const id = String(req.body?.id||'');
