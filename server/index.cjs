@@ -11,7 +11,16 @@ try {
 const { StandardCheckoutClient, Env, MetaInfo, StandardCheckoutPayRequest, CreateSdkOrderRequest, RefundRequest } = pgSdk;
 
 const app = express();
-app.use(express.json({verify:(req,res,buf)=>{try{req.rawBody=buf.toString('utf8');}catch{}}}));
+// Render/Vercel sit behind one proxy hop; this makes req.ip the real client IP
+// (used for login rate limiting) instead of a spoofable X-Forwarded-For value.
+app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS||1));
+app.use('/api/admin/upload-image', express.json({limit:'3mb'}));
+app.use(express.json({limit:'200kb', verify:(req,res,buf)=>{try{req.rawBody=buf.toString('utf8');}catch{}}}));
+app.use((req,res,next)=>{
+  res.header('X-Content-Type-Options','nosniff');
+  res.header('Referrer-Policy','no-referrer');
+  next();
+});
 
 app.use((req,res,next)=>{
   res.header('Access-Control-Allow-Origin','*');
@@ -33,7 +42,10 @@ const CLIENT_VERSION = process.env.PHONEPE_CLIENT_VERSION || '';
 const ACCESS_CODE = process.env.PHONEPE_ACCESS_CODE || '';
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || 'https://www.hoychoycafe.com';
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'hoychoycafe@gmail.com';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'h0ych0ycafe123';
+// Legacy fallback so existing deployments keep working; the admin panel nags
+// until it is changed. Set ADMIN_PASSWORD in the environment to override.
+const LEGACY_DEFAULT_PASSWORD = 'h0ych0ycafe123';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || LEGACY_DEFAULT_PASSWORD;
 const ADMIN_WHATSAPP_PHONE = process.env.ADMIN_WHATSAPP_PHONE || '';
 const WA_PHONE_NUMBER_ID = process.env.WA_PHONE_NUMBER_ID || '';
 const WA_ACCESS_TOKEN = process.env.WA_ACCESS_TOKEN || '';
@@ -68,24 +80,62 @@ async function upGet(key){
   }catch{ return null }
 }
 async function upSet(key, value){
-  try{ if(!UP_URL||!UP_TOKEN) return false; const val=encodeURIComponent(JSON.stringify(value)); const r=await fetch(`${UP_URL}/set/${encodeURIComponent(key)}/${val}`,{method:'POST',headers:{Authorization:`Bearer ${UP_TOKEN}`}}); return r.ok; }catch{ return false }
+  // Value goes in the request body, not the URL path: large payloads (orders,
+  // menus with many overrides) overflow URL length limits and silently fail.
+  try{ if(!UP_URL||!UP_TOKEN) return false; const r=await fetch(`${UP_URL}/set/${encodeURIComponent(key)}`,{method:'POST',headers:{Authorization:`Bearer ${UP_TOKEN}`},body:JSON.stringify(value)}); return r.ok; }catch{ return false }
+}
+async function upDel(key){
+  try{ if(!UP_URL||!UP_TOKEN) return false; const r=await fetch(`${UP_URL}/del/${encodeURIComponent(key)}`,{method:'POST',headers:{Authorization:`Bearer ${UP_TOKEN}`}}); return r.ok; }catch{ return false }
+}
+
+function safeEqual(a, b){
+  const ba = Buffer.from(String(a)); const bb = Buffer.from(String(b));
+  if(ba.length !== bb.length){ crypto.timingSafeEqual(ba, ba); return false; }
+  return crypto.timingSafeEqual(ba, bb);
+}
+function hashPassword(pwd){
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(String(pwd), salt, 64).toString('hex');
+  return { salt, hash };
+}
+function verifyHashed(pwd, rec){
+  try{
+    const h = crypto.scryptSync(String(pwd), rec.salt, 64).toString('hex');
+    return safeEqual(h, rec.hash);
+  }catch{ return false }
 }
 
 let dynamicAdminAuth = loadAuthFS();
 async function refreshAdminAuthFromStore(){
   try{
     const v = await upGet('hc:admin_auth');
-    if(v && typeof v==='object' && v.password){
+    if(v && typeof v==='object' && (v.hash || v.password)){
       dynamicAdminAuth = v;
       saveAuthFS(dynamicAdminAuth);
     }
   }catch{}
 }
-function getAdminPassword(){
-  if(dynamicAdminAuth && dynamicAdminAuth.password){
-    return String(dynamicAdminAuth.password);
+async function storeAdminPassword(pwd){
+  dynamicAdminAuth = { ...hashPassword(pwd), updatedAt: Date.now() };
+  saveAuthFS(dynamicAdminAuth);
+  await upSet('hc:admin_auth', dynamicAdminAuth);
+}
+function checkAdminPassword(pwd){
+  const rec = dynamicAdminAuth || {};
+  if(rec.hash && rec.salt) return verifyHashed(pwd, rec);
+  if(rec.password){
+    const ok = safeEqual(pwd, rec.password);
+    // Upgrade legacy plaintext storage to a hash on first successful login.
+    if(ok) storeAdminPassword(pwd).catch(()=>{});
+    return ok;
   }
-  return ADMIN_PASSWORD;
+  return safeEqual(pwd, ADMIN_PASSWORD);
+}
+function isUsingDefaultPassword(){
+  const rec = dynamicAdminAuth || {};
+  if(rec.hash) return verifyHashed(LEGACY_DEFAULT_PASSWORD, rec);
+  if(rec.password) return rec.password === LEGACY_DEFAULT_PASSWORD;
+  return ADMIN_PASSWORD === LEGACY_DEFAULT_PASSWORD;
 }
 
 let overrides = loadOverridesFS();
@@ -125,7 +175,25 @@ function createSession(ttlHours){
   persistSessions();
   return t;
 }
-function isValidSession(t){ const s=sessions.get(t); if(!s) return false; const now=Date.now(); if(now>s.exp){ sessions.delete(t); persistSessions(); return false; } s.lastActive = now; return true; }
+function pruneSessions(){
+  const now = Date.now();
+  sessions.forEach((s,k)=>{ if(!s || now>s.exp) sessions.delete(k); });
+  // Too many devices: sign out the least recently used one rather than
+  // locking the owner out of their own panel.
+  while(sessions.size >= ADMIN_MAX_CONCURRENT_SESSIONS){
+    let oldestKey=null, oldest=Infinity;
+    sessions.forEach((s,k)=>{ const t=s.lastActive||s.createdAt||0; if(t<oldest){ oldest=t; oldestKey=k; } });
+    if(oldestKey==null) break;
+    sessions.delete(oldestKey);
+  }
+}
+function revokeSessions(exceptToken){
+  const keep = exceptToken ? sessions.get(exceptToken) : null;
+  sessions.clear();
+  if(keep) sessions.set(exceptToken, keep);
+  persistSessions();
+}
+function isValidSession(t){ if(!t) return false; const s=sessions.get(t); if(!s) return false; const now=Date.now(); if(now>s.exp){ sessions.delete(t); persistSessions(); return false; } s.lastActive = now; return true; }
 
 let tokenCache = { token: '', expiresAt: 0 };
 let sdkClient = null;
@@ -222,7 +290,36 @@ async function phonepeRefund(merchantTransactionId, amount){
 }
 
 const payments = new Map();
-const orders = [];
+// Orders used to live only in memory, so every Render restart/sleep wiped the
+// order history. They are now mirrored to disk and Upstash.
+const ORDERS_PATH = path.join(DATA_DIR, 'orders.json');
+const MAX_STORED_ORDERS = Number(process.env.MAX_STORED_ORDERS||1500);
+const orders = (()=>{ try{ ensureDir(); const a=JSON.parse(fs.readFileSync(ORDERS_PATH,'utf-8')||'[]'); return Array.isArray(a)?a:[]; }catch{ return []; } })();
+let ordersSaveTimer = null;
+function persistOrders(){
+  clearTimeout(ordersSaveTimer);
+  ordersSaveTimer = setTimeout(()=>{
+    try{
+      if(orders.length > MAX_STORED_ORDERS){
+        orders.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+        orders.length = MAX_STORED_ORDERS;
+      }
+      ensureDir(); fs.writeFileSync(ORDERS_PATH, JSON.stringify(orders));
+      upSet('hc:orders', orders);
+    }catch{}
+  }, 400);
+}
+async function loadOrdersFromStore(){
+  try{
+    const v = await upGet('hc:orders');
+    if(Array.isArray(v)){
+      const byId = new Map(orders.map(o=>[String(o.id), o]));
+      v.forEach(o=>{ if(o && o.id!=null && !byId.has(String(o.id))){ orders.push(o); byId.set(String(o.id), o); } });
+    }
+    orders.forEach(o=>{ if(o.paymentState) payments.set(String(o.id), {status:o.paymentState==='PAID'?'COMPLETED':o.paymentState, transactionId:o.txnId||null}); });
+  }catch{}
+}
+loadOrdersFromStore();
 const orderClients = new Set();
 const orderRecon = new Map();
 const tgOrderReminderTimers = new Map();
@@ -267,6 +364,7 @@ function upsertOrder(record){
   }catch{ return null }
 }
 function broadcast(payload){
+  if(payload && /^order/.test(String(payload.type||''))) persistOrders();
   const msg = `data: ${JSON.stringify(payload)}\n\n`;
   orderClients.forEach((res)=>{ try{ res.write(msg); }catch{} });
 }
@@ -340,7 +438,7 @@ function fmtTGPaySuccess(o){
       if(g && g.lat!=null && g.lng!=null){ map = `https://maps.google.com/?q=${Number(g.lat)},${Number(g.lng)}`; }
       else if(cust.manualLink){ map = String(cust.manualLink); }
     }catch{}
-    const names = items.map(it=>`${(it.item&&it.item.name)||''} ×${Number(it.qty||0)}`).filter(Boolean);
+    const names = items.map(it=>`${(it.item&&it.item.name)||it.name||''} ×${Number(it.qty||0)}`).filter(Boolean);
     const preview = names.slice(0,4).join(', ');
     const more = names.length>4 ? `, +${names.length-4} more` : '';
     const lines = [];
@@ -419,6 +517,140 @@ function fmtTGStatusChange(o, status){
   }catch{ return 'Order status updated'; }
 }
 
+// ---- Payment state (single source of truth) --------------------------------
+const FULFILMENT_STATUSES = ['ACCEPTED','PREPARING','OUT_FOR_DELIVERY','DELIVERED','CANCELLED'];
+function mapPaymentState(raw){
+  const s = String(raw||'').toUpperCase();
+  if(s==='COMPLETED'||s==='SUCCESS'||s==='PAID'||s==='PAYMENT_SUCCESS') return 'PAID';
+  if(s==='FAILED'||s==='PAYMENT_ERROR'||s==='PAYMENT_DECLINED') return 'FAILED';
+  return 'PENDING';
+}
+function applyPaymentState(orderId, rawState, txn){
+  const id = String(orderId||''); if(!id) return null;
+  const mapped = mapPaymentState(rawState);
+  payments.set(id, {status: mapped==='PAID' ? 'COMPLETED' : mapped, transactionId: txn||null});
+  const existing = findOrderById(id) || { id, createdAt: Date.now(), total: 0, items: [], customer: {}, status:'PENDING' };
+  // A late webhook must never drag an order the kitchen already accepted back to "PAID".
+  const status = FULFILMENT_STATUSES.includes(String(existing.status)) ? existing.status : mapped;
+  const updated = { ...existing, status, paymentState: mapped, txnId: txn || existing.txnId || null };
+  if(mapped==='PAID' && !existing.paidAt) updated.paidAt = Date.now();
+  const saved = upsertOrder(updated) || updated;
+  if(mapped==='PAID' && !existing.tgPaySuccessNotified){
+    sendWhatsApp(formatOrderWhatsApp(saved)).catch(()=>{});
+    sendTelegram(fmtTGPaySuccess(saved)).then(r=>{
+      if(r && r.ok) upsertOrder({ id, notified:true, tgPaySuccessNotified:true });
+      else console.log('telegram_send_failed_pay_success', r && r.data);
+    }).catch(()=>{});
+  }
+  if(mapped==='FAILED' && !existing.tgPayFailedNotified){
+    sendTelegram(fmtTGPayFailed(saved)).then(r=>{ if(r && r.ok) upsertOrder({ id, tgPayFailedNotified:true }); }).catch(()=>{});
+  }
+  if(mapped!=='PENDING') clearPaymentPendingReminder(id);
+  return saved;
+}
+// Asks PhonePe directly. Used whenever a request claims a payment changed but
+// cannot prove it (unsigned callbacks, customer refreshing the status page).
+const lastVerify = new Map();
+async function verifyWithPhonePe(orderId, minGapMs = 5000){
+  const id = String(orderId||''); if(!id) return null;
+  const now = Date.now();
+  if(now - (lastVerify.get(id)||0) < minGapMs) return findOrderById(id);
+  lastVerify.set(id, now);
+  try{
+    const client = getSdkClient(); if(!client) return null;
+    const response = await client.getOrderStatus(id);
+    const list = Array.isArray(response?.payment_details) ? response.payment_details : [];
+    const txn = list.length ? list[list.length-1]?.transactionId : null;
+    return applyPaymentState(id, response?.state || 'PENDING', txn);
+  }catch{ return null }
+}
+
+// ---- Server-side pricing ----------------------------------------------------
+// The browser used to send the amount to charge and the server trusted it, so a
+// customer could edit the request and pay ₹1 for a full order.
+const CAFE_LAT = Number(process.env.CAFE_LAT||26.194053);
+const CAFE_LNG = Number(process.env.CAFE_LNG||93.866083);
+const DEFAULT_DELIVERY_RATES = { maxRadius: 10, tiers: [ {upToKm:5, fee:60}, {upToKm:8, fee:80}, {upToKm:10, fee:120} ] };
+let baseMenuCache = null;
+function getBaseMenu(){
+  if(baseMenuCache) return baseMenuCache;
+  try{ baseMenuCache = JSON.parse(fs.readFileSync(path.join(__dirname, '../src/data/menu.json'),'utf8')); }catch{ baseMenuCache = { items: [] }; }
+  return baseMenuCache;
+}
+function getServerMenuItems(){
+  const ov = overrides || {};
+  const removed = new Set(Array.isArray(ov.removed) ? ov.removed : []);
+  const edited = (ov.edited && typeof ov.edited==='object') ? ov.edited : {};
+  const avail = (ov.availability && typeof ov.availability==='object') ? ov.availability : {};
+  const map = new Map();
+  (getBaseMenu().items||[]).forEach(it=>{ if(it && it.id && !removed.has(it.id)) map.set(it.id, { ...it, ...(edited[it.id]||{}) }); });
+  (Array.isArray(ov.added) ? ov.added : []).forEach(it=>{ if(it && it.id && !removed.has(it.id)) map.set(it.id, { ...it }); });
+  map.forEach((it,id)=>{ if(avail[id]!=null) it.available = !!avail[id]; });
+  return map;
+}
+function haversineKm(lat1,lon1,lat2,lon2){
+  const toRad=(v)=>v*Math.PI/180, R=6371;
+  const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
+  const a=Math.sin(dLat/2)**2+Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+function priceOrder({ items, couponCode, coord }){
+  const menu = getServerMenuItems();
+  const lines = [];
+  for(const raw of (Array.isArray(items)?items:[])){
+    const id = String(raw?.id || raw?.item?.id || '');
+    const qty = Math.floor(Number(raw?.qty||0));
+    if(!id || !(qty>0) || qty>50) return { error:'invalid-items' };
+    const it = menu.get(id);
+    if(!it) return { error:'item-unavailable', item: String(raw?.name||raw?.item?.name||id) };
+    if(it.available===false) return { error:'item-unavailable', item: it.name };
+    lines.push({ id, name: it.name, qty, price: Number(it.price||0) });
+  }
+  if(!lines.length) return { error:'empty-cart' };
+  const ss = overrides?.storeSettings || {};
+  const subtotal = lines.reduce((s,l)=>s+l.price*l.qty, 0);
+  let discountPct = 0, coupon = null;
+  if(couponCode){
+    const key = String(couponCode).trim().toUpperCase();
+    const c = (overrides?.coupons||{})[key];
+    if(c && c.enabled && Number(c.percent)>0){ discountPct = Math.min(100, Number(c.percent)); coupon = key; }
+  }
+  const discounted = Math.max(0, Math.round(subtotal*(1-discountPct/100)));
+  const gstPercent = ss.gstPercent!=null ? Math.max(0, Number(ss.gstPercent)) : 5;
+  const gst = Math.round(discounted*gstPercent/100);
+  const rates = (overrides?.deliveryRates?.tiers?.length) ? overrides.deliveryRates : DEFAULT_DELIVERY_RATES;
+  const tiers = rates.tiers.slice().sort((a,b)=>a.upToKm-b.upToKm);
+  let deliveryFee = Number(tiers[0]?.fee ?? 60), distanceKm = null;
+  if(coord && Number.isFinite(Number(coord.lat)) && Number.isFinite(Number(coord.lng))){
+    distanceKm = Number(haversineKm(CAFE_LAT, CAFE_LNG, Number(coord.lat), Number(coord.lng)).toFixed(2));
+    const maxR = Number(rates.maxRadius || tiers[tiers.length-1]?.upToKm || 10);
+    const tier = distanceKm <= maxR ? tiers.find(t=>distanceKm<=t.upToKm) : null;
+    if(!tier) return { error:'out-of-range', distanceKm, maxRadius:maxR };
+    deliveryFee = Number(tier.fee);
+  }
+  const packagingFee = Math.max(0, Number(ss.packagingFee||0));
+  const grandTotal = discounted + gst + deliveryFee + packagingFee;
+  return { lines, subtotal, discountPct, coupon, discounted, gstPercent, gst, deliveryFee, distanceKm, packagingFee, grandTotal };
+}
+function isStoreClosedNow(){
+  if(process.env.APP_CLOSED==='1') return true;
+  if(overrides.appClosed!==true) return false;
+  const until = Number(overrides.closedUntil||0);
+  return !(until>0 && Date.now()>=until);
+}
+function cleanLink(u){
+  try{ const x=new URL(String(u)); return (x.protocol==='https:'||x.protocol==='http:') ? x.toString().slice(0,500) : ''; }catch{ return '' }
+}
+function cleanCustomer(c){
+  c = c || {};
+  const s = (v,n)=>String(v==null?'':v).slice(0,n);
+  const geo = c.geo && Number.isFinite(Number(c.geo.lat)) && Number.isFinite(Number(c.geo.lng)) ? { lat:Number(c.geo.lat), lng:Number(c.geo.lng) } : null;
+  const ml = String(c.manualLink||'').trim();
+  const mm = ml.match(/^(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)$/);
+  const manualLink = mm ? `https://maps.google.com/?q=${mm[1]},${mm[2]}` : cleanLink(ml);
+  return { name:s(c.name,80), phone:s(c.phone,20).replace(/[^\d+]/g,''), address:s(c.address,500), note:s(c.note,500), geo, manualLink };
+}
+
 function getMinOrderAmount(){
   if(overrides?.storeSettings?.minOrderAmount !== undefined && overrides.storeSettings.minOrderAmount !== null){
     return Number(overrides.storeSettings.minOrderAmount);
@@ -426,50 +658,68 @@ function getMinOrderAmount(){
   return MIN_ORDER_RUPEES;
 }
 
-function isWithinHours(){ const h=new Date().getHours(); return h>=12 && h<21; }
 app.get('/api/app-status', async (req,res)=>{
   try{ await refreshOverridesFromStore(); }catch{}
-  const closed = overrides.appClosed===true || process.env.APP_CLOSED==='1';
+  // "Close for 2 hours" used to close the store forever because nothing ever
+  // checked closedUntil. Reopen automatically once it has passed.
+  if(overrides.appClosed===true && Number(overrides.closedUntil||0)>0 && Date.now()>=Number(overrides.closedUntil)){
+    overrides.appClosed = false; overrides.closedUntil = 0; saveOverrides(overrides);
+  }
+  const closed = isStoreClosedNow();
   const open = !closed;
   const reason = closed ? 'CLOSED_BY_OWNER' : 'OPEN';
   res.set('Cache-Control', 'public, max-age=5, stale-while-revalidate=10');
   res.json({open, reason, ownerClosed: overrides.appClosed===true, closedUntil: overrides.closedUntil||0});
 });
 
-function requireAdmin(req,res,next){
+function bearer(req){
   const hdr = req.headers['authorization']||'';
-  const tok = hdr.startsWith('Bearer ') ? hdr.slice(7) : hdr;
-  if(isValidSession(tok)) return next();
+  return hdr.startsWith('Bearer ') ? hdr.slice(7) : hdr;
+}
+function requireAdmin(req,res,next){
+  if(isValidSession(bearer(req))) return next();
   return res.status(401).json({error:'unauthorized'});
 }
 
+let globalFailures = { count: 0, windowStart: Date.now() };
 app.post('/api/admin/login', async (req,res)=>{
   const { email, password, remember } = req.body||{};
   try{ await refreshAdminAuthFromStore(); }catch{}
-  const currentAdminPwd = getAdminPassword();
-  if(!ADMIN_EMAIL || !currentAdminPwd) return res.status(500).json({error:'admin-not-configured'});
+  if(!ADMIN_EMAIL) return res.status(500).json({error:'admin-not-configured'});
   const cid = getClientId(req);
   const rec = loginAttempts.get(cid)||{count:0, blockedUntil:0};
   if(rec.blockedUntil && Date.now()<rec.blockedUntil){
-    const retryAt = rec.blockedUntil;
-    return res.status(429).json({error:'rate_limited', retryAt});
+    return res.status(429).json({error:'rate_limited', retryAt: rec.blockedUntil});
   }
-  if(email===ADMIN_EMAIL && password===currentAdminPwd){
+  // Backstop against attackers rotating IPs: cap total failures per 15 minutes.
+  if(Date.now()-globalFailures.windowStart > 15*60*1000) globalFailures = { count:0, windowStart:Date.now() };
+  if(globalFailures.count >= 50){
+    return res.status(429).json({error:'rate_limited', retryAt: globalFailures.windowStart + 15*60*1000});
+  }
+  const emailOk = safeEqual(String(email||'').trim().toLowerCase(), String(ADMIN_EMAIL).toLowerCase());
+  const pwdOk = checkAdminPassword(String(password||''));
+  if(emailOk && pwdOk){
     loginAttempts.delete(cid);
-    try{
-      const now=Date.now();
-      const activeCount = Array.from(sessions.values()).filter(s=>s && s.exp>now).length;
-      if(activeCount>=ADMIN_MAX_CONCURRENT_SESSIONS){
-        return res.status(429).json({error:'too_many_sessions', max:ADMIN_MAX_CONCURRENT_SESSIONS});
-      }
-    }catch{}
+    pruneSessions();
     const token=createSession(remember ? ADMIN_REMEMBER_TTL_DAYS*24 : ADMIN_TOKEN_TTL_HOURS);
     return res.json({ok:true, token});
   }
+  globalFailures.count++;
   rec.count = (rec.count||0)+1;
   if(rec.count>=5){ rec.blockedUntil = Date.now()+10*60*1000; rec.count=0; }
   loginAttempts.set(cid, rec);
   return res.status(401).json({error:'invalid-credentials'});
+});
+
+app.post('/api/admin/logout', (req,res)=>{
+  const tok = bearer(req);
+  if(tok && sessions.has(tok)){ sessions.delete(tok); persistSessions(); }
+  res.json({ok:true});
+});
+
+app.post('/api/admin/logout-others', requireAdmin, (req,res)=>{
+  revokeSessions(bearer(req));
+  res.json({ok:true, sessions: sessions.size});
 });
 
 app.post('/api/admin/change-password', requireAdmin, async (req,res)=>{
@@ -479,34 +729,31 @@ app.post('/api/admin/change-password', requireAdmin, async (req,res)=>{
       return res.status(400).json({error:'current_and_new_password_required', message:'Current and new passwords are required'});
     }
     try{ await refreshAdminAuthFromStore(); }catch{}
-    const currentAdminPwd = getAdminPassword();
-    if(String(currentPassword) !== String(currentAdminPwd)){
+    if(!checkAdminPassword(String(currentPassword))){
       return res.status(400).json({error:'incorrect_current_password', message:'Current password is incorrect'});
     }
     const cleanNew = String(newPassword).trim();
-    if(cleanNew.length < 6){
-      return res.status(400).json({error:'weak_password', message:'New password must be at least 6 characters long'});
+    if(cleanNew.length < 8){
+      return res.status(400).json({error:'weak_password', message:'New password must be at least 8 characters long'});
     }
-
-    dynamicAdminAuth = {
-      password: cleanNew,
-      updatedAt: Date.now()
-    };
-    saveAuthFS(dynamicAdminAuth);
-    await upSet('hc:admin_auth', dynamicAdminAuth);
-
-    return res.json({ok:true, message:'Password updated successfully!'});
+    if(cleanNew === LEGACY_DEFAULT_PASSWORD){
+      return res.status(400).json({error:'weak_password', message:'Please choose a password other than the default one'});
+    }
+    await storeAdminPassword(cleanNew);
+    // Anyone who knew the old password is signed out everywhere except here.
+    revokeSessions(bearer(req));
+    return res.json({ok:true, message:'Password updated. All other devices have been signed out.'});
   }catch(e){
     return res.status(500).json({error:'server-error', message:'Failed to update password'});
   }
 });
 
 app.get('/api/admin/me', (req,res)=>{
-  const hdr = req.headers['authorization']||'';
-  const tok = hdr.startsWith('Bearer ') ? hdr.slice(7) : hdr;
+  const tok = bearer(req);
   const ok = isValidSession(tok);
   if(ok){ const s=sessions.get(tok); if(s){ const hours = s.ttlHours||ADMIN_TOKEN_TTL_HOURS; const now=Date.now(); s.exp=now+hours*60*60*1000; s.lastActive=now; persistSessions(); } }
-  return res.json({authed:ok});
+  if(!ok) return res.json({authed:false});
+  return res.json({authed:true, email: ADMIN_EMAIL, defaultPassword: isUsingDefaultPassword(), sessions: sessions.size});
 });
 
 app.post('/api/admin/debug/send-telegram', requireAdmin, async (req,res)=>{
@@ -566,63 +813,35 @@ app.get('/api/menu-overrides', (req,res)=>{
   });
 });
 
-// Debug helpers (no secrets) to verify persistence state
-app.get('/api/debug/overrides', async (req,res)=>{
-  try{
-    const up = await upGet('hc:overrides');
-    const fsOv = loadOverridesFS();
-    res.json({
-      upstashConfigured: !!(UP_URL && UP_TOKEN),
-      upstashValue: up || null,
-      filesystemValue: fsOv || null,
-      activeValue: overrides || null
-    });
-  }catch(e){ res.status(500).json({error:'debug-failed'}); }
-});
+// Removed: /api/debug/overrides was public and returned the raw overrides,
+// including the Telegram bot token.
 
+// Called by the customer's browser after payment. It can only fill in details
+// that are missing; price, items and payment status come from the server.
 app.post('/api/order', async (req,res)=>{
   try{
-    const { orderId, transactionId, customer, items, total } = req.body||{};
+    const { orderId, customer, items } = req.body||{};
     if(!orderId || !customer){
       return res.status(400).json({error:'invalid-order'});
     }
-    const existing = findOrderById(orderId) || { id: orderId, createdAt: Date.now(), status:'PENDING' };
-    const updated = {
-      ...existing,
-      txnId: transactionId || existing.txnId || null,
-      total: Number(total||existing.total||0),
-      items: Array.isArray(items)?items:(existing.items||[]),
-      customer,
-    };
-    let saved = upsertOrder(updated);
-    try{
-      const pay = payments.get(orderId) || {};
-      const raw = String(pay.status||saved.status||'PENDING');
-      const mapped = (raw==='COMPLETED'||raw==='SUCCESS'||raw==='PAID') ? 'PAID' : (raw==='FAILED' ? 'FAILED' : 'PENDING');
-      if(mapped==='PAID' && !saved.tgPaySuccessNotified){
-        const r = await sendTelegram(fmtTGPaySuccess(saved));
-        if(r && r.ok){
-          clearPaymentPendingReminder(String(orderId));
-          saved = upsertOrder({ ...saved, tgPaySuccessNotified:true }) || saved;
-        }else{ try{ console.log('telegram_send_failed_pay_success', r && r.data); }catch{} }
-      }else if(mapped==='FAILED' && !saved.tgPayFailedNotified){
-        const r = await sendTelegram(fmtTGPayFailed(saved));
-        if(r && r.ok){
-          clearPaymentPendingReminder(String(orderId));
-          saved = upsertOrder({ ...saved, tgPayFailedNotified:true }) || saved;
-        }else{ try{ console.log('telegram_send_failed_pay_failed', r && r.data); }catch{} }
-      }else if(mapped==='PENDING'){
-        schedulePaymentPendingReminder(String(orderId));
-        if(!saved.tgPendingPayNotified){
-          const r = await sendTelegram(fmtTGPendingPayment(saved));
-          if(r && r.ok){ saved = upsertOrder({ ...saved, tgPendingPayNotified:true }) || saved; }
-          else{ try{ console.log('telegram_send_failed_pending', r && r.data); }catch{} }
-        }
-      }
-    }catch{}
-    return res.json({ok:true, order:saved});
+    const existing = findOrderById(orderId);
+    if(!existing) return res.status(404).json({error:'order-not-found'});
+    const patch = { id: existing.id };
+    const cust = existing.customer || {};
+    if(!cust.phone || !cust.address) patch.customer = cleanCustomer(customer);
+    if((!Array.isArray(existing.items) || !existing.items.length) && Array.isArray(items)){
+      const priced = priceOrder({ items });
+      if(!priced.error) patch.items = priced.lines;
+    }
+    let saved = upsertOrder(patch) || existing;
+    if(saved.paymentState!=='PAID') saved = (await verifyWithPhonePe(saved.id)) || saved;
+    if(saved.paymentState==='PAID' && !saved.tgPaySuccessNotified){
+      const r = await sendTelegram(fmtTGPaySuccess(saved));
+      if(r && r.ok) saved = upsertOrder({ id: saved.id, tgPaySuccessNotified:true }) || saved;
+    }
+    return res.json({ok:true, status: saved.paymentState||'PENDING'});
   }catch(e){
-    return res.status(500).json({error:'server-error', message:String(e)});
+    return res.status(500).json({error:'server-error'});
   }
 });
 
@@ -633,25 +852,17 @@ app.get('/api/admin/orders', requireAdmin, (req,res)=>{
 
 app.get('/api/admin/orders.csv', requireAdmin, (req,res)=>{
   const list = orders.slice().sort((a,b)=>b.createdAt-a.createdAt);
-  const header = ['id','createdAt','status','total','name','phone','address','note','items'].join(',');
+  // Quote every cell, and neutralise leading =,+,-,@ so Excel can't run formulas
+  // a customer typed into their name or address.
+  const cell = (v)=>{ let s=String(v==null?'':v); if(/^[=+\-@\t\r]/.test(s)) s="'"+s; return `"${s.replace(/"/g,'""')}"`; };
+  const header = ['id','date','orderStatus','payment','total','name','phone','address','note','items'].join(',');
   const rows = list.map(o=>{
-    const items = (o.items||[]).map(it=>`${(it.item&&it.item.name)||''} x${it.qty}`).join(' | ');
+    const items = (o.items||[]).map(it=>`${(it.item&&it.item.name)||it.name||''} x${it.qty}`).join(' | ');
     const cust = o.customer||{};
-    const created = new Date(o.createdAt||Date.now()).toISOString();
-    const status = o.status||'NEW';
-    return [
-      o.id,
-      created,
-      status,
-      Number(o.total||0),
-      (cust.name||'').replace(/,/g,' '),
-      (cust.phone||'').replace(/,/g,' '),
-      (cust.address||'').replace(/,/g,' '),
-      (cust.note||'').replace(/,/g,' '),
-      items.replace(/,/g,';')
-    ].join(',');
+    const created = new Date(o.createdAt||Date.now()).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'});
+    return [o.id, created, o.status||'NEW', o.paymentState||'', Number(o.total||0), cust.name, cust.phone, cust.address, cust.note, items].map(cell).join(',');
   });
-  const csv = [header].concat(rows).join('\n');
+  const csv = '﻿' + [header].concat(rows).join('\n');
   res.setHeader('Content-Type','text/csv');
   res.setHeader('Content-Disposition','attachment; filename="orders.csv"');
   res.send(csv);
@@ -790,17 +1001,25 @@ app.get('/api/admin/store-settings', requireAdmin, (req,res)=>{
 
 app.post('/api/admin/store-settings', requireAdmin, (req,res)=>{
   try{
-    const { contactPhone, upiId, merchantName, minOrderAmount, packagingFee } = req.body||{};
-    overrides.storeSettings = overrides.storeSettings || {};
+    const b = req.body||{};
+    const ss = overrides.storeSettings = overrides.storeSettings || {};
+    const txt = (v,n)=>String(v==null?'':v).trim().slice(0,n);
 
-    if(contactPhone !== undefined) overrides.storeSettings.contactPhone = String(contactPhone).replace(/[^0-9]/g, '');
-    if(upiId !== undefined) overrides.storeSettings.upiId = String(upiId).trim();
-    if(merchantName !== undefined) overrides.storeSettings.merchantName = String(merchantName).trim();
-    if(minOrderAmount !== undefined) overrides.storeSettings.minOrderAmount = Math.max(0, Number(minOrderAmount||0));
-    if(packagingFee !== undefined) overrides.storeSettings.packagingFee = Math.max(0, Number(packagingFee||0));
+    if(b.contactPhone !== undefined) ss.contactPhone = String(b.contactPhone).replace(/[^0-9]/g, '').slice(0,15);
+    if(b.upiId !== undefined) ss.upiId = txt(b.upiId,80);
+    if(b.merchantName !== undefined) ss.merchantName = txt(b.merchantName,80);
+    if(b.minOrderAmount !== undefined) ss.minOrderAmount = Math.max(0, Number(b.minOrderAmount||0));
+    if(b.packagingFee !== undefined) ss.packagingFee = Math.max(0, Number(b.packagingFee||0));
+    if(b.gstPercent !== undefined) ss.gstPercent = Math.min(28, Math.max(0, Number(b.gstPercent||0)));
+    if(b.openingHours !== undefined) ss.openingHours = txt(b.openingHours,80);
+    if(b.announcement !== undefined) ss.announcement = txt(b.announcement,200);
+    if(b.contactEmail !== undefined) ss.contactEmail = txt(b.contactEmail,120);
+    if(b.instagramUrl !== undefined) ss.instagramUrl = cleanLink(b.instagramUrl);
+    if(b.locationUrl !== undefined) ss.locationUrl = cleanLink(b.locationUrl);
 
     saveOverrides(overrides);
-    return res.json({ok:true, storeSettings: overrides.storeSettings});
+    const safe = { ...ss }; delete safe.telegramBotToken;
+    return res.json({ok:true, storeSettings: safe});
   }catch(e){
     return res.status(500).json({error:'server-error', message:e.message});
   }
@@ -823,8 +1042,14 @@ app.post('/api/admin/refund', requireAdmin, async (req,res)=>{
     const { orderId, amount } = req.body||{};
     if(!orderId || amount==null) return res.status(400).json({error:'invalid-refund-request'});
     const pay = payments.get(orderId);
-    if(!pay || (String(pay.status)!=='SUCCESS' && String(pay.status)!=='COMPLETED')){
+    const ord = findOrderById(orderId);
+    const paid = (ord && ord.paymentState==='PAID') || (pay && mapPaymentState(pay.status)==='PAID');
+    if(!paid){
       return res.status(400).json({error:'payment-not-verified'});
+    }
+    const maxRefund = Number(ord?.total || pay?.amount || 0);
+    if(!(Number(amount)>0) || (maxRefund>0 && Number(amount)>maxRefund)){
+      return res.status(400).json({error:'invalid-amount', max:maxRefund});
     }
     const client = getSdkClient();
     if(client){
@@ -836,6 +1061,8 @@ app.post('/api/admin/refund', requireAdmin, async (req,res)=>{
         .originalMerchantOrderId(String(orderId))
         .build();
       const response = await client.refund(request);
+      // Record it on the order so a second tap doesn't refund twice unnoticed.
+      if(ord) upsertOrder({ id: ord.id, refunds: [ ...(ord.refunds||[]), { refundId, amount:Number(amount), at:Date.now(), state:response?.state||'PENDING' } ] });
       return res.json({ok:true, refundId, state:response?.state||'PENDING', details:response});
     }
     if(!MERCHANT_ID || !SALT_KEY){
@@ -1110,6 +1337,41 @@ app.post('/api/admin/reset-menu', requireAdmin, (req,res)=>{
   }
 });
 
+// ---- Dish photo uploads -----------------------------------------------------
+// Lets the owner upload a photo from their phone instead of needing someone to
+// host it and paste a URL. Photos are resized in the browser before upload.
+const IMG_DIR = path.join(DATA_DIR, 'images');
+const IMG_TYPES = { 'image/jpeg':'jpg', 'image/png':'png', 'image/webp':'webp' };
+app.post('/api/admin/upload-image', requireAdmin, async (req,res)=>{
+  try{
+    const m = String(req.body?.dataUrl||'').match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/);
+    if(!m) return res.status(400).json({error:'invalid-image', message:'Please choose a JPG, PNG or WebP photo'});
+    const buf = Buffer.from(m[2], 'base64');
+    if(buf.length > 1.5*1024*1024) return res.status(413).json({error:'too-large', message:'Photo is too large (max 1.5 MB after resizing)'});
+    const id = crypto.randomBytes(9).toString('hex') + '.' + IMG_TYPES[m[1]];
+    try{ fs.mkdirSync(IMG_DIR,{recursive:true}); fs.writeFileSync(path.join(IMG_DIR,id), buf); }catch{}
+    await upSet(`hc:img:${id}`, { type:m[1], data:m[2] });
+    const base = `${req.protocol}://${req.get('host')}`;
+    return res.json({ok:true, url:`${base}/api/img/${id}`});
+  }catch(e){ return res.status(500).json({error:'server-error'}); }
+});
+app.get('/api/img/:id', async (req,res)=>{
+  const id = String(req.params.id||'');
+  if(!/^[a-f0-9]{18}\.(jpg|png|webp)$/.test(id)) return res.status(404).end();
+  const type = Object.keys(IMG_TYPES).find(k=>IMG_TYPES[k]===id.split('.').pop());
+  res.set('Cache-Control','public, max-age=31536000, immutable');
+  res.set('Content-Type', type);
+  try{ return res.send(fs.readFileSync(path.join(IMG_DIR,id))); }catch{}
+  const v = await upGet(`hc:img:${id}`);
+  if(v && v.data){
+    const buf = Buffer.from(v.data,'base64');
+    try{ fs.mkdirSync(IMG_DIR,{recursive:true}); fs.writeFileSync(path.join(IMG_DIR,id), buf); }catch{}
+    return res.send(buf);
+  }
+  res.set('Cache-Control','no-store');
+  return res.status(404).end();
+});
+
 function parseCoordsFromUrl(u){
   try{
     const q=u.searchParams.get('q')||u.searchParams.get('ll')||u.searchParams.get('query');
@@ -1126,13 +1388,24 @@ app.post('/api/resolve-maps', async (req,res)=>{
     const { url } = req.body||{};
     if(!url) return res.status(400).json({error:'url-required'});
     const u = new URL(String(url));
-    const host=u.hostname.toLowerCase();
-    if(!(host.includes('google.com')||host.includes('goo.gl'))) return res.status(400).json({error:'unsupported-host'});
+    // Exact host allowlist, checked on every redirect hop. The old substring
+    // check let "google.com.attacker.net" (or a redirect) make this server fetch
+    // arbitrary URLs, including internal ones.
+    const allowedHost = (h)=>{ h=String(h||'').toLowerCase(); return u.protocol==='https:' || u.protocol==='http:' ? (h==='goo.gl' || h==='maps.app.goo.gl' || h==='google.com' || /^[a-z0-9-]+\.google\.com$/.test(h) || /^(www\.)?google\.co\.in$/.test(h)) : false; };
+    if(!allowedHost(u.hostname)) return res.status(400).json({error:'unsupported-host'});
     let parsed = parseCoordsFromUrl(u);
     if(parsed && parsed.lat!=null && parsed.lng!=null) return res.json({coord:{lat:parsed.lat,lng:parsed.lng}});
-    const r = await fetch(String(url), {redirect:'follow'});
-    const finalUrl = r.url || String(url);
-    const uf = new URL(finalUrl);
+    let current = u;
+    for(let hop=0; hop<5; hop++){
+      const r = await fetch(current.toString(), {redirect:'manual', signal: AbortSignal.timeout(6000)});
+      const loc = r.headers.get('location');
+      if(!(r.status>=300 && r.status<400 && loc)) break;
+      const next = new URL(loc, current);
+      if(!/^https?:$/.test(next.protocol) || !allowedHost(next.hostname)) break;
+      current = next;
+    }
+    const finalUrl = current.toString();
+    const uf = current;
     parsed = parseCoordsFromUrl(uf);
     if(parsed && parsed.lat!=null && parsed.lng!=null) return res.json({coord:{lat:parsed.lat,lng:parsed.lng}, finalUrl});
     const qStr = parsed && parsed.q ? parsed.q : null;
@@ -1155,10 +1428,26 @@ app.post('/api/resolve-maps', async (req,res)=>{
 
 app.post('/api/initiate-payment', async (req,res)=>{
   try{
-    const { amount, orderId, customerPhone, customerName, expireAfter, snapshot } = req.body;
+    const { amount, orderId, customerPhone, customerName, snapshot } = req.body||{};
     if(!amount || !orderId) return res.status(400).json({error:'amount and orderId required'});
+    if(!/^[A-Za-z0-9_-]{6,60}$/.test(String(orderId))) return res.status(400).json({error:'invalid-order-id'});
+    if(findOrderById(orderId)) return res.status(409).json({error:'duplicate-order'});
+    try{ await refreshOverridesFromStore(); }catch{}
+    if(isStoreClosedNow()) return res.status(403).json({error:'store-closed', message: overrides.closingMessage||'We are closed right now.'});
+    const priced = priceOrder({ items: snapshot?.items, couponCode: snapshot?.coupon, coord: snapshot?.coord });
+    if(priced.error){
+      const msg = priced.error==='item-unavailable' ? `"${priced.item}" is no longer available. Please update your cart.`
+        : priced.error==='out-of-range' ? `Sorry, we only deliver within ${priced.maxRadius} km.`
+        : 'Your cart could not be processed. Please refresh and try again.';
+      return res.status(400).json({error:priced.error, message:msg});
+    }
     const minAmt = getMinOrderAmount();
-    if(Number(amount) < minAmt) return res.status(400).json({error:'min-order-amount', min:minAmt});
+    if(priced.subtotal + priced.deliveryFee < minAmt) return res.status(400).json({error:'min-order-amount', min:minAmt, message:`Minimum order is ₹${minAmt}.`});
+    // The customer's location is self-reported, so a higher delivery tier than
+    // our estimate is fine; paying less than the server's price is not.
+    if(Number(amount) < priced.grandTotal - 1){
+      return res.status(409).json({error:'price-changed', expected: priced.grandTotal, message:`Prices have been updated. Your new total is ₹${priced.grandTotal}.`});
+    }
     const client = getSdkClient();
     if(!client) return res.status(500).json({error:'sdk-not-configured'});
     const paisa = Math.round(Number(amount)*100);
@@ -1175,21 +1464,26 @@ app.post('/api/initiate-payment', async (req,res)=>{
     const response = await client.pay(request);
     const url = response?.redirect_url || response?.redirectUrl || null;
     if(!url) return res.status(500).json({error:'phonepe-init-failed', details:response});
-    payments.set(orderId, {status:'PENDING', amount});
-    startReconcile(orderId, Number(expireAfter)||1800);
+    payments.set(orderId, {status:'PENDING', amount:Number(amount)});
+    startReconcile(orderId, 1800);
     schedulePaymentPendingReminder(String(orderId));
-    const pre = findOrderById(orderId);
-    const baseCust = { name:String(customerName||''), phone:String(customerPhone||'') };
-    const preRecord = {
-      id: orderId,
+    upsertOrder({
+      id: String(orderId),
       txnId: null,
-      total: Number(amount||0),
-      items: Array.isArray(snapshot?.items)?snapshot.items:(pre?.items||[]),
-      customer: snapshot?.customer || pre?.customer || baseCust,
-      createdAt: pre?.createdAt || Date.now(),
-      status: pre?.status || 'PENDING'
-    };
-    upsertOrder(preRecord);
+      total: Number(amount),
+      subtotal: priced.subtotal,
+      discountPct: priced.discountPct,
+      coupon: priced.coupon,
+      gst: priced.gst,
+      deliveryFee: Number(amount) - (priced.discounted + priced.gst + priced.packagingFee),
+      packagingFee: priced.packagingFee,
+      distanceKm: priced.distanceKm,
+      items: priced.lines,
+      customer: cleanCustomer(snapshot?.customer || { name:customerName, phone:customerPhone }),
+      createdAt: Date.now(),
+      status: 'PENDING',
+      paymentState: 'PENDING'
+    });
     return res.json({redirectUrl:url, orderId});
   }catch(e){
     return res.status(500).json({error:'server-error', message:String(e)});
@@ -1279,187 +1573,65 @@ app.post('/api/admin/initiate-1rs-test', requireAdmin, async (req,res)=>{
   }
 });
 
-app.post('/api/create-sdk-order', async (req,res)=>{
-  try{
-    const { amount, orderId } = req.body||{};
-    if(!amount || !orderId) return res.status(400).json({error:'missing-fields'});
-    const minAmt = getMinOrderAmount();
-    if(Number(amount) < minAmt) return res.status(400).json({error:'min-order-amount', min:minAmt});
-    const client = getSdkClient();
-    if(!client) return res.status(500).json({error:'sdk-not-configured'});
-    const paisa = Math.round(Number(amount)*100);
-    const request = CreateSdkOrderRequest.StandardCheckoutBuilder()
-      .merchantOrderId(String(orderId))
-      .amount(paisa)
-      .redirectUrl(String(`${PUBLIC_BASE_URL}/?merchantTransactionId=${orderId}`))
-      .build();
-    const response = await client.createSdkOrder(request);
-    const token = response?.token || null;
-    if(!token) return res.status(500).json({error:'create-sdk-order-failed', details:response});
-    payments.set(orderId, {status:'PENDING', amount});
-    return res.json({token, orderId});
-  }catch(e){
-    return res.status(500).json({error:'server-error', message:String(e)});
-  }
-});
+// Removed: /api/create-sdk-order was unused by the site and charged whatever
+// amount the caller sent without creating an order record.
 
+// PhonePe's server-to-server callback. Only a correctly signed callback is
+// trusted directly; anything else just prompts us to ask PhonePe ourselves.
+// (Previously an unsigned POST of {merchantTransactionId, state:"COMPLETED"}
+// marked any order as paid.)
+function handlePhonePeCallback(req){
+  const client = getSdkClient();
+  const cbUser = process.env.PHONEPE_CB_USER||'';
+  const cbPass = process.env.PHONEPE_CB_PASS||'';
+  if(client && cbUser && cbPass && req.rawBody){
+    try{
+      const validated = client.validateCallback(cbUser, cbPass, req.headers['authorization']||'', req.rawBody);
+      const event = String(validated?.event || validated?.type || '');
+      const payload = validated?.payload||{};
+      const orderId = String(payload.originalMerchantOrderId||payload.merchantOrderId||payload.orderId||'');
+      const st = String(payload.state||'PENDING');
+      if(event.startsWith('pg.refund')){
+        broadcast({type:'refund.updated', orderId, refundId:String(payload.merchantRefundId||payload.refundId||''), state:st});
+      }else if(orderId){
+        applyPaymentState(orderId, st, String(payload.transactionId||payload.paymentDetails?.[0]?.transactionId||''));
+      }
+      return { ok:true, verified:true };
+    }catch{ /* fall through to a status check */ }
+  }
+  const b = req.body||{};
+  const claimed = String(b.merchantTransactionId||b.merchantOrderId||b.payload?.merchantOrderId||b.payload?.originalMerchantOrderId||'');
+  if(claimed && findOrderById(claimed)) verifyWithPhonePe(claimed, 0).catch(()=>{});
+  return { ok:true, verified:false };
+}
 app.post('/api/payment-callback', (req,res)=>{
-  try{
-    const { merchantTransactionId, transactionId, state } = req.body || {};
-    const client = getSdkClient();
-    const auth = req.headers['authorization']||'';
-    const cbUser = process.env.PHONEPE_CB_USER||'';
-    const cbPass = process.env.PHONEPE_CB_PASS||'';
-    if(client && cbUser && cbPass && auth && req.rawBody){
-      try{
-        const validated = client.validateCallback(cbUser, cbPass, auth, req.rawBody);
-        const payload = validated?.payload||{};
-        const orderId = String(payload.originalMerchantOrderId||payload.orderId||merchantTransactionId||'');
-        const txn = String(payload.transactionId||transactionId||'');
-        const st = String(payload.state||state||'PENDING');
-        if(orderId){
-          payments.set(orderId, {status:st, transactionId:txn});
-          const mapped = st==='COMPLETED' ? 'PAID' : (st==='FAILED' ? 'FAILED' : 'PENDING');
-          const existing = findOrderById(orderId) || { id: orderId, createdAt: Date.now(), total: 0, items: [], customer: {}, status:'PENDING' };
-          let updated = { ...existing, status:mapped, txnId: txn||existing.txnId||null };
-          const shouldNotify = mapped==='PAID' && !existing.notified;
-          if(shouldNotify){
-            const text = formatOrderWhatsApp(updated);
-            sendWhatsApp(text).catch(()=>{});
-            sendTelegram(fmtTGPaySuccess(updated)).then(r=>{ if(r && r.ok){ updated = { ...updated, notified:true, tgPaySuccessNotified:true }; } else { try{ console.log('telegram_send_failed_pay_success', r && r.data); }catch{} } }).catch(()=>{ try{ console.log('telegram_send_error_pay_success'); }catch{} });
-          }
-          if(mapped==='FAILED' && !existing.tgPayFailedNotified){
-            sendTelegram(fmtTGPayFailed(updated)).then(r=>{ if(r && r.ok){ updated = { ...updated, tgPayFailedNotified:true }; } else { try{ console.log('telegram_send_failed_pay_failed', r && r.data); }catch{} } }).catch(()=>{ try{ console.log('telegram_send_error_pay_failed'); }catch{} });
-          }
-          if(mapped==='PAID' || mapped==='FAILED'){ clearPaymentPendingReminder(String(orderId)); }
-          upsertOrder(updated);
-        }
-        return res.json({ok:true, state:st});
-      }catch(e){
-        if(merchantTransactionId){
-          payments.set(merchantTransactionId, {status:state, transactionId});
-          const mapped = state==='COMPLETED' ? 'PAID' : (state==='FAILED' ? 'FAILED' : 'PENDING');
-          const existing = findOrderById(merchantTransactionId) || { id: merchantTransactionId, createdAt: Date.now(), total: 0, items: [], customer: {}, status:'PENDING' };
-          let updated = { ...existing, status:mapped, txnId: transactionId||existing.txnId||null };
-          const shouldNotify = mapped==='PAID' && !existing.notified;
-          if(shouldNotify){
-            const text = formatOrderWhatsApp(updated);
-            sendWhatsApp(text).catch(()=>{});
-            sendTelegram(fmtTGPaySuccess(updated)).then(r=>{ if(r && r.ok){ updated = { ...updated, notified:true, tgPaySuccessNotified:true }; } else { try{ console.log('telegram_send_failed_pay_success', r && r.data); }catch{} } }).catch(()=>{ try{ console.log('telegram_send_error_pay_success'); }catch{} });
-          }
-          if(mapped==='FAILED' && !existing.tgPayFailedNotified){
-            sendTelegram(fmtTGPayFailed(updated)).then(r=>{ if(r && r.ok){ updated = { ...updated, tgPayFailedNotified:true }; } else { try{ console.log('telegram_send_failed_pay_failed', r && r.data); }catch{} } }).catch(()=>{ try{ console.log('telegram_send_error_pay_failed'); }catch{} });
-          }
-          if(mapped==='PAID' || mapped==='FAILED'){ clearPaymentPendingReminder(String(merchantTransactionId)); }
-          upsertOrder(updated);
-        }
-        return res.json({ok:true, state});
-      }
-    }else{
-      if(merchantTransactionId){
-        payments.set(merchantTransactionId, {status:state, transactionId});
-        const mapped = state==='COMPLETED' ? 'PAID' : (state==='FAILED' ? 'FAILED' : 'PENDING');
-        const existing = findOrderById(merchantTransactionId) || { id: merchantTransactionId, createdAt: Date.now(), total: 0, items: [], customer: {}, status:'PENDING' };
-        let updated = { ...existing, status:mapped, txnId: transactionId||existing.txnId||null };
-        const shouldNotify = mapped==='PAID' && !existing.notified;
-        if(shouldNotify){
-          const text = formatOrderWhatsApp(updated);
-          sendWhatsApp(text).catch(()=>{});
-          sendTelegram(fmtTGPaySuccess(updated)).then(r=>{ if(r && r.ok){ updated = { ...updated, notified:true, tgPaySuccessNotified:true }; } else { try{ console.log('telegram_send_failed_pay_success', r && r.data); }catch{} } }).catch(()=>{ try{ console.log('telegram_send_error_pay_success'); }catch{} });
-        }
-        if(mapped==='FAILED' && !existing.tgPayFailedNotified){
-          sendTelegram(fmtTGPayFailed(updated)).then(r=>{ if(r && r.ok){ updated = { ...updated, tgPayFailedNotified:true }; } else { try{ console.log('telegram_send_failed_pay_failed', r && r.data); }catch{} } }).catch(()=>{ try{ console.log('telegram_send_error_pay_failed'); }catch{} });
-        }
-        if(mapped==='PAID' || mapped==='FAILED'){ clearPaymentPendingReminder(String(merchantTransactionId)); }
-        upsertOrder(updated);
-      }
-      return res.json({ok:true, state});
-    }
-  }catch{
-    res.status(500).json({error:'callback-error'});
-  }
+  try{ return res.json(handlePhonePeCallback(req)); }catch{ return res.status(500).json({error:'callback-error'}); }
 });
-
 app.post('/api/phonepe/webhook', (req,res)=>{
-  try{
-    const client = getSdkClient();
-    const auth = req.headers['authorization']||'';
-    const cbUser = process.env.PHONEPE_CB_USER||'';
-    const cbPass = process.env.PHONEPE_CB_PASS||'';
-    if(client && cbUser && cbPass && req.rawBody){
-      try{
-        const validated = client.validateCallback(cbUser, cbPass, auth, req.rawBody);
-        const event = validated?.event || validated?.type || '';
-        const payload = validated?.payload||{};
-        const orderId = String(payload.originalMerchantOrderId||payload.orderId||'');
-        const txn = String(payload.transactionId||'');
-        const st = String(payload.state||'PENDING');
-        if(orderId){
-          const mapped = st==='COMPLETED' ? 'PAID' : (st==='FAILED' ? 'FAILED' : 'PENDING');
-          payments.set(orderId, {status:mapped, transactionId:txn});
-          const existing = findOrderById(orderId) || { id: orderId, createdAt: Date.now(), total: 0, items: [], customer: {}, status:'PENDING' };
-          let updated = { ...existing, status:mapped, txnId: txn||existing.txnId||null };
-          const shouldNotify = mapped==='PAID' && !existing.notified;
-          if(shouldNotify){
-            const text = formatOrderWhatsApp(updated);
-            sendWhatsApp(text).catch(()=>{});
-            sendTelegram(fmtTGPaySuccess(updated)).then(r=>{ if(r && r.ok){ updated = { ...updated, notified:true, tgPaySuccessNotified:true }; } else { try{ console.log('telegram_send_failed_pay_success', r && r.data); }catch{} } }).catch(()=>{ try{ console.log('telegram_send_error_pay_success'); }catch{} });
-          }
-          if(mapped==='FAILED' && !existing.tgPayFailedNotified){
-            sendTelegram(fmtTGPayFailed(updated)).then(r=>{ if(r && r.ok){ updated = { ...updated, tgPayFailedNotified:true }; } else { try{ console.log('telegram_send_failed_pay_failed', r && r.data); }catch{} } }).catch(()=>{ try{ console.log('telegram_send_error_pay_failed'); }catch{} });
-          }
-          if(mapped==='PAID' || mapped==='FAILED'){ clearPaymentPendingReminder(String(orderId)); }
-          upsertOrder(updated);
-        }
-        if(event && event.startsWith('pg.order')){
-          // Broadcast order state changes explicitly
-          broadcast({type:'order.state', orderId, state:st});
-        }
-        if(event && event.startsWith('pg.refund')){
-          const rid = String(payload.merchantRefundId||payload.refundId||'');
-          const msg = `data: ${JSON.stringify({type:'refund.updated', orderId, refundId:rid, state:st})}\n\n`;
-          orderClients.forEach((res)=>{ try{ res.write(msg); }catch{} });
-        }
-        return res.json({ok:true});
-      }catch(e){
-        return res.status(400).json({error:'invalid-callback'});
-      }
-    }
-    return res.json({ok:true});
-  }catch{
-    res.status(500).json({error:'callback-error'});
-  }
+  try{ return res.json(handlePhonePeCallback(req)); }catch{ return res.status(500).json({error:'callback-error'}); }
 });
 
 app.get('/api/payment-status/:id', async (req,res)=>{
   try{
-    const id = req.params.id;
-    const resp = await phonepeStatus(id);
-    if(!resp.ok) return res.status(500).json({error:'phonepe-status-failed', details:resp.data});
-    const code = resp.data?.code;
-    const status = resp.data?.data?.state || 'PENDING';
-    const transactionId = resp.data?.data?.transactionId || null;
-    payments.set(id, {status, transactionId});
-    res.json({status, transactionId, code});
+    const id = String(req.params.id||'');
+    const ord = (await verifyWithPhonePe(id)) || findOrderById(id);
+    if(!ord) return res.status(404).json({error:'order-not-found'});
+    res.json({status: ord.paymentState||'PENDING', transactionId: ord.txnId||null});
   }catch(e){
-    res.status(500).json({error:'server-error', message:String(e)});
+    res.status(500).json({error:'server-error'});
   }
 });
 
+// Public: the customer's payment page polls this. Returns no personal details.
 app.get('/api/order-status/:id', async (req,res)=>{
   try{
-    const orderId = req.params.id;
-    const existing = findOrderById(orderId);
-    if(existing){
-      const status = existing.status || 'PENDING';
-      const transactionId = existing.txnId || null;
-      return res.json({status, transactionId, order: existing});
-    }
-    const pay = payments.get(orderId);
-    if(pay){ return res.json({status:pay.status||'PENDING', transactionId:pay.transactionId||null}); }
-    return res.status(404).json({error:'order-not-found'});
+    const id = String(req.params.id||'');
+    let ord = findOrderById(id);
+    if(!ord) return res.status(404).json({error:'order-not-found'});
+    if(ord.paymentState!=='PAID' && ord.paymentState!=='FAILED') ord = (await verifyWithPhonePe(id)) || ord;
+    return res.json({ status: ord.paymentState||'PENDING', orderStatus: ord.status||'PENDING', transactionId: ord.txnId||null, prepTime: ord.prepTime||null, total: ord.total||0 });
   }catch(e){
-    res.status(500).json({error:'server-error', message:String(e)});
+    res.status(500).json({error:'server-error'});
   }
 });
 
@@ -1485,24 +1657,12 @@ function startReconcile(orderId, expireAfter){
       const list = Array.isArray(response?.payment_details) ? response.payment_details : [];
       const latest = list.length ? list[list.length-1] : null;
       const txn = latest?.transactionId || null;
+      if(status==='COMPLETED' || status==='FAILED'){
+        applyPaymentState(orderId, status, txn);
+        stop();
+        return;
+      }
       payments.set(orderId,{status, transactionId:txn});
-      try{
-        if(status==='COMPLETED' || status==='FAILED'){
-          const mapped = status==='COMPLETED' ? 'PAID' : 'FAILED';
-          const existing = findOrderById(orderId) || { id: orderId, createdAt: Date.now(), total: 0, items: [], customer: {}, status:'PENDING' };
-          let updated = { ...existing, status:mapped, txnId: txn||existing.txnId||null };
-          if(mapped==='PAID' && !existing.tgPaySuccessNotified){
-            sendTelegram(fmtTGPaySuccess(updated)).then(r=>{ if(r && r.ok){ updated = { ...updated, tgPaySuccessNotified:true, notified:true }; } else { try{ console.log('telegram_send_failed_pay_success', r && r.data); }catch{} } }).catch(()=>{ try{ console.log('telegram_send_error_pay_success'); }catch{} });
-          }
-          if(mapped==='FAILED' && !existing.tgPayFailedNotified){
-            sendTelegram(fmtTGPayFailed(updated)).then(r=>{ if(r && r.ok){ updated = { ...updated, tgPayFailedNotified:true }; } else { try{ console.log('telegram_send_failed_pay_failed', r && r.data); }catch{} } }).catch(()=>{ try{ console.log('telegram_send_error_pay_failed'); }catch{} });
-          }
-          clearPaymentPendingReminder(String(orderId));
-          upsertOrder(updated);
-          stop();
-          return;
-        }
-      }catch{}
       const age = Math.floor((Date.now()-start)/1000);
       if(status==='COMPLETED' || status==='FAILED' || age>=expireAfter){ stop(); return; }
       scheduleNext();
@@ -1533,119 +1693,79 @@ function startReconcile(orderId, expireAfter){
   scheduleNext();
 }
 
+refreshSessionsFromStore();
+refreshAdminAuthFromStore();
+refreshOverridesFromStore(true);
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, ()=>{
   console.log(`PhonePe server listening on http://localhost:${PORT}`);
 });
+const ORDER_STATUSES = ['PENDING','PAID','ACCEPTED','PREPARING','OUT_FOR_DELIVERY','DELIVERED','CANCELLED'];
+function setOrderStatus(id, status, extra){
+  const idx = orders.findIndex(o=>String(o.id)===String(id));
+  if(idx<0) return null;
+  const now = Date.now();
+  const updated = { ...orders[idx], status, statusUpdatedAt: now };
+  if(status==='ACCEPTED'){ updated.acceptedAt = now; if(extra?.prepTime) updated.prepTime = String(extra.prepTime).slice(0,40); }
+  else if(status==='OUT_FOR_DELIVERY') updated.outForDeliveryAt = now;
+  else if(status==='DELIVERED') updated.deliveredAt = now;
+  else if(status==='CANCELLED'){ updated.cancelledAt = now; if(extra?.cancelReason) updated.cancelReason = String(extra.cancelReason).slice(0,200); }
+  orders[idx] = updated;
+  if(status==='ACCEPTED'||status==='DELIVERED'||status==='CANCELLED') clearOrderReminder(String(id));
+  sendTelegram(fmtTGStatusChange(updated, status)).catch(()=>{});
+  broadcast({type:'order.updated', order:updated});
+  return updated;
+}
 app.post('/api/admin/order-delivered', requireAdmin, (req,res)=>{
-  try{
-    const { id } = req.body||{};
-    if(!id) return res.status(400).json({error:'id required'});
-    const idx = orders.findIndex(o=>String(o.id)===String(id));
-    if(idx<0) return res.status(404).json({error:'order-not-found'});
-    orders[idx] = { ...orders[idx], status:'DELIVERED', deliveredAt: Date.now() };
-    try{ sendTelegram(fmtTGStatusChange(orders[idx],'DELIVERED')).then(r=>{ if(!r || !r.ok){ try{ console.log('telegram_send_failed_status_delivered', r && r.data); }catch{} } }).catch(()=>{ try{ console.log('telegram_send_error_status_delivered'); }catch{} }); }catch{}
-    const payload = `data: ${JSON.stringify({type:'order.updated', order:orders[idx]})}\n\n`;
-    orderClients.forEach((res)=>{ try{ res.write(payload); }catch{} });
-    return res.json({ok:true, order:orders[idx]});
-  }catch(e){
-    return res.status(500).json({error:'server-error'});
-  }
+  const o = setOrderStatus(req.body?.id, 'DELIVERED');
+  return o ? res.json({ok:true, order:o}) : res.status(404).json({error:'order-not-found'});
 });
 app.post('/api/admin/order-accept', requireAdmin, (req,res)=>{
-  try{
-    const { id } = req.body||{};
-    if(!id) return res.status(400).json({error:'id required'});
-    const idx = orders.findIndex(o=>String(o.id)===String(id));
-    if(idx<0) return res.status(404).json({error:'order-not-found'});
-    orders[idx] = { ...orders[idx], status:'ACCEPTED', acceptedAt: Date.now() };
-    try{ sendTelegram(fmtTGStatusChange(orders[idx],'ACCEPTED')).then(r=>{ if(!r || !r.ok){ try{ console.log('telegram_send_failed_status_accepted', r && r.data); }catch{} } }).catch(()=>{ try{ console.log('telegram_send_error_status_accepted'); }catch{} }); }catch{}
-    const payload = `data: ${JSON.stringify({type:'order.updated', order:orders[idx]})}\n\n`;
-    orderClients.forEach((res)=>{ try{ res.write(payload); }catch{} });
-    return res.json({ok:true, order:orders[idx]});
-  }catch(e){
-    return res.status(500).json({error:'server-error'});
-  }
+  const o = setOrderStatus(req.body?.id, 'ACCEPTED', req.body);
+  return o ? res.json({ok:true, order:o}) : res.status(404).json({error:'order-not-found'});
 });
-
 app.post('/api/admin/order-update-status', requireAdmin, (req,res)=>{
-  try{
-    const { id, status, prepTime, cancelReason } = req.body||{};
-    if(!id || !status) return res.status(400).json({error:'id and status required'});
-    const idx = orders.findIndex(o=>String(o.id)===String(id));
-    if(idx<0) return res.status(404).json({error:'order-not-found'});
-
-    const upperStatus = String(status).toUpperCase();
-    const updated = {
-      ...orders[idx],
-      status: upperStatus,
-      statusUpdatedAt: Date.now()
-    };
-
-    if(upperStatus === 'ACCEPTED'){
-      updated.acceptedAt = Date.now();
-      if(prepTime) updated.prepTime = String(prepTime);
-    } else if(upperStatus === 'DELIVERED'){
-      updated.deliveredAt = Date.now();
-    } else if(upperStatus === 'OUT_FOR_DELIVERY'){
-      updated.outForDeliveryAt = Date.now();
-    } else if(upperStatus === 'CANCELLED'){
-      updated.cancelledAt = Date.now();
-      if(cancelReason) updated.cancelReason = String(cancelReason);
-    }
-
-    orders[idx] = updated;
-
-    try{
-      sendTelegram(fmtTGStatusChange(updated, upperStatus)).catch(()=>{});
-    }catch{}
-
-    const payload = `data: ${JSON.stringify({type:'order.updated', order:updated})}\n\n`;
-    orderClients.forEach((client)=>{ try{ client.write(payload); }catch{} });
-
-    return res.json({ok:true, order:updated});
-  }catch(e){
-    return res.status(500).json({error:'server-error', message:e.message});
-  }
+  const { id, status } = req.body||{};
+  const upper = String(status||'').toUpperCase();
+  if(!id || !ORDER_STATUSES.includes(upper)) return res.status(400).json({error:'id and valid status required'});
+  const o = setOrderStatus(id, upper, req.body);
+  return o ? res.json({ok:true, order:o}) : res.status(404).json({error:'order-not-found'});
 });
-
+// Owner can re-check a stuck "payment pending" order against PhonePe.
+app.post('/api/admin/order-verify-payment', requireAdmin, async (req,res)=>{
+  const id = String(req.body?.id||'');
+  if(!findOrderById(id)) return res.status(404).json({error:'order-not-found'});
+  const o = await verifyWithPhonePe(id, 0);
+  if(!o) return res.status(502).json({error:'phonepe-unavailable', message:'Could not reach PhonePe. Try again in a minute.'});
+  return res.json({ok:true, order:o});
+});
 app.post('/api/admin/order-delete', requireAdmin, (req,res)=>{
-  try{
-    const { id } = req.body||{};
-    if(!id) return res.status(400).json({error:'id required'});
-    const idx = orders.findIndex(o=>String(o.id)===String(id));
-    if(idx<0) return res.status(404).json({error:'order-not-found'});
-    const removed = orders.splice(idx,1)[0];
-    const payload = `data: ${JSON.stringify({type:'order.deleted', id:String(id)})}\n\n`;
-    orderClients.forEach((res)=>{ try{ res.write(payload); }catch{} });
-    return res.json({ok:true, id:String(id)});
-  }catch(e){
-    return res.status(500).json({error:'server-error'});
-  }
+  const { id } = req.body||{};
+  if(!id) return res.status(400).json({error:'id required'});
+  const idx = orders.findIndex(o=>String(o.id)===String(id));
+  if(idx<0) return res.status(404).json({error:'order-not-found'});
+  orders.splice(idx,1);
+  broadcast({type:'order.deleted', id:String(id)});
+  return res.json({ok:true, id:String(id)});
 });
-
 app.post('/api/admin/orders-clear', requireAdmin, (req,res)=>{
-  try{
-    orders.length = 0;
-    const payload = `data: ${JSON.stringify({type:'orders.cleared'})}\n\n`;
-    orderClients.forEach((res)=>{ try{ res.write(payload); }catch{} });
-    return res.json({ok:true});
-  }catch(e){
-    return res.status(500).json({error:'server-error'});
-  }
+  orders.length = 0;
+  broadcast({type:'orders.cleared'});
+  persistOrders();
+  return res.json({ok:true});
 });
 const loginAttempts = new Map();
 function getClientId(req){
   try{
-    const xf = (req.headers['x-forwarded-for']||'').split(',')[0].trim();
-    return xf || req.ip || 'unknown';
+    return req.ip || 'unknown';
   }catch{ return 'unknown'; }
 }
 // SEO endpoints served by backend (do not interfere with SPA rendering)
 app.get('/robots.txt', (req, res) => {
   try{
     const origin = (process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
-    const txt = `User-agent: *\nAllow: /\nSitemap: ${origin}/sitemap.xml\n`;
+    const txt = `User-agent: *\nAllow: /\nDisallow: /admin\nSitemap: ${origin}/sitemap.xml\n`;
     res.set('Content-Type','text/plain');
     res.send(txt);
   }catch{ res.set('Content-Type','text/plain'); res.send('User-agent: *\nAllow: /\n'); }
@@ -1653,7 +1773,7 @@ app.get('/robots.txt', (req, res) => {
 
 app.get('/sitemap.xml', (req, res) => {
   const origin = (process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
-  const paths = ['/', '/privacy', '/terms', '/refund', '/shipping', '/about', '/reserve', '/admin'];
+  const paths = ['/', '/privacy', '/terms', '/refund', '/shipping', '/about', '/reserve'];
   const now = new Date().toISOString();
   const urls = paths.map(p=>`  <url>\n    <loc>${origin}${p}</loc>\n    <lastmod>${now}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>${p==='/'?'1.00':'0.80'}</priority>\n  </url>`).join('\n');
   const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>`;

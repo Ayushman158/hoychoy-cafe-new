@@ -1,14 +1,24 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { getMenu } from "../utils/menu.js";
-import { UPI_ID, MERCHANT_NAME, BACKEND_URL, CAFE_LAT, CAFE_LNG } from "../config";
+import { getMenu, fetchBackendOverridesAndCache } from "../utils/menu.js";
+import { BACKEND_URL, CAFE_LAT, CAFE_LNG } from "../config";
 import { generateOrderId } from "../utils/order";
-import { buildUpiIntent } from "../utils/upi";
 
 export default function Checkout({cart, setCart, onBack, onSubmit}){
+  const [menuVersion,setMenuVersion]=useState(0);
+  useEffect(()=>{
+    const onUpdate=(e)=>{
+      setMenuVersion(v=>v+1);
+      const d=e.detail||{};
+      if(d.storeSettings) setStoreSettings(d.storeSettings);
+      if(d.deliveryRates?.tiers?.length) setDeliveryRates(d.deliveryRates);
+    };
+    window.addEventListener('hc_menu_updated', onUpdate);
+    return ()=>window.removeEventListener('hc_menu_updated', onUpdate);
+  },[]);
   const items=useMemo(()=>{
     const menu = getMenu();
     return Object.entries(cart).map(([id,q])=>{const it=menu.items.find(x=>x.id===id);return it?{item:it,qty:q}:null;}).filter(Boolean);
-  },[cart]);
+  },[cart, menuVersion]);
   const total = items.reduce((s, x) => s + x.item.price * x.qty, 0);
   const [name,setName]=useState("");
   const [phone,setPhone]=useState("");
@@ -29,8 +39,6 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
     return Number(haversine(CAFE_LAT, CAFE_LNG, coord.lat, coord.lng).toFixed(2));
   },[coord]);
   const valid=name.trim()&&phone.replace(/\D/g,"").length===10&&address.trim()&&((!!geo)||isValidManualLink(manualLink));
-  const upiIntent = buildUpiIntent(UPI_ID, total, MERCHANT_NAME, "Order at HoyChoy Café", `HC-${Date.now()}`);
-  const [copied,setCopied]=useState(false);
   const [agree,setAgree]=useState(true);
   const [showDetails,setShowDetails]=useState(false);
   const [couponCode,setCouponCode]=useState("");
@@ -43,7 +51,7 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
   useEffect(()=>{localStorage.setItem("hc_cart",JSON.stringify(cart));},[cart]);
 
   function dec(id){setCart(c=>{const v=(c[id]||0)-1;const n={...c};if(v<=0) delete n[id]; else n[id]=v;return n;});}
-  function inc(id){console.log('Incrementing item in cart:', id);console.log('Current cart:', cart);setCart(c=>({...c,[id]:(c[id]||0)+1}));}
+  function inc(id){setCart(c=>({...c,[id]:(c[id]||0)+1}));}
   function clearCart(){ setCart({}); try{ localStorage.removeItem('hc_cart'); }catch{} }
 
   async function capture(){
@@ -161,7 +169,8 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
   const minOrderRequired = Math.max(0, Number(storeSettings?.minOrderAmount !== undefined ? storeSettings.minOrderAmount : 200));
 
   const discountedSubtotal = Math.max(0, Math.round(total * (1 - discountPct/100)));
-  const gst = Math.round(discountedSubtotal*0.05);
+  const gstPercent = storeSettings?.gstPercent!=null ? Math.max(0, Number(storeSettings.gstPercent)) : 5;
+  const gst = Math.round(discountedSubtotal*gstPercent/100);
   const deliveryFee = calculateDeliveryFee();
   const deliveryAvailable = deliveryFee!=null;
   const grandTotal = discountedSubtotal + gst + (deliveryAvailable?deliveryFee:0) + packagingFee;
@@ -204,14 +213,24 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
     const redirectUrl = `${window.location.origin}/?merchantTransactionId=${orderId}`;
     const callbackUrl = `${BACKEND_URL}/api/payment-callback`;
     const snapshotItems = items.map(({item,qty})=>({id:item.id,name:item.name,qty,price:item.price}));
-    const snapshot = { items: snapshotItems, customer:{name,phone,address,note,geo,manualLink:manualLink.trim()}, total, gst, deliveryFee, packagingFee, grandTotal };
-    const resp = await fetch(`${BACKEND_URL}/api/initiate-payment`,{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({amount:grandTotal, orderId, customerPhone:phone, customerName:name, redirectUrl, callbackUrl, snapshot})
-    });
-    const data = await resp.json();
+    // The server re-prices the cart from its own menu; coupon and location let it match our total.
+    const snapshot = { items: snapshotItems, customer:{name,phone,address,note,geo,manualLink:manualLink.trim()}, coord: coord||null, coupon: coupon?.code||null, total, gst, deliveryFee, packagingFee, grandTotal };
+    let resp, data;
+    try{
+      resp = await fetch(`${BACKEND_URL}/api/initiate-payment`,{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({amount:grandTotal, orderId, customerPhone:phone, customerName:name, redirectUrl, callbackUrl, snapshot})
+      });
+      data = await resp.json().catch(()=>({}));
+    }catch{
+      alert('Network error. Please check your connection and try again.');
+      setPaying(false);
+      return;
+    }
     if(!resp.ok || !data.redirectUrl){
-      alert('Could not start PhonePe payment. Please try again.');
+      alert(data?.message || 'Could not start PhonePe payment. Please try again.');
+      // Prices, stock or opening status changed since the menu loaded: pull fresh data.
+      if(['price-changed','item-unavailable','store-closed'].includes(data?.error)){ fetchBackendOverridesAndCache().catch(()=>{}); }
       setPaying(false);
       return;
     }
@@ -310,7 +329,7 @@ export default function Checkout({cart, setCart, onBack, onSubmit}){
           <div className="mt-2">
             <div className="row"><span>Subtotal</span><span className="price">₹{total}</span></div>
             {discountPct>0 && <div className="row"><span>Coupon ({discountPct}% off)</span><span className="price">-₹{Math.max(0, total - discountedSubtotal)}</span></div>}
-            <div className="row"><span>GST (5%)</span><span className="price">₹{gst}</span></div>
+            <div className="row"><span>GST ({gstPercent}%)</span><span className="price">₹{gst}</span></div>
             {total>0 && canOrder && <div className="row"><span>Delivery Fee</span><span className="price">₹{deliveryFee}</span></div>}
             {packagingFee>0 && <div className="row"><span>Packaging Fee</span><span className="price">₹{packagingFee}</span></div>}
           </div>

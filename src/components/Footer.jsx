@@ -4,12 +4,14 @@ import { OWNER_PHONE } from "../config.js";
 export default function Footer(){
   const year = new Date().getFullYear();
   const siteUrl = typeof window !== "undefined" ? window.location.origin + "/" : "https://www.hoychoycafe.com/";
-  const storePhone = (()=>{
-    try {
-      const cached = JSON.parse(localStorage.getItem("hc_menu_backend_overrides") || "{}");
-      return cached?.storeSettings?.contactPhone || OWNER_PHONE;
-    } catch { return OWNER_PHONE; }
+  const settings = (()=>{
+    try { return JSON.parse(localStorage.getItem("hc_menu_backend_overrides") || "{}")?.storeSettings || {}; }
+    catch { return {}; }
   })();
+  const storePhone = settings.contactPhone || OWNER_PHONE;
+  const instagram = settings.instagramUrl || "https://www.instagram.com/hoychoy_cafe/";
+  const email = settings.contactEmail || "hoychoycafe@gmail.com";
+  const location = settings.locationUrl || "https://maps.google.com/?q=26.194053,93.866083";
   return (
     <footer className="max-w-[600px] mx-auto px-6 py-10 pb-24 text-sm">
       <div className="mb-6 flex items-center gap-2 text-white">
@@ -34,15 +36,16 @@ export default function Footer(){
           <div className="font-semibold text-white mb-3">About</div>
           <ul className="flex flex-col gap-2 text-[#cfcfcf]">
             <li><a href="/about" className="hover:text-white">About HoyChoy Café</a></li>
+            {settings.openingHours && <li className="text-[#9a9a9a]">Open {settings.openingHours}</li>}
           </ul>
         </div>
         <div>
           <div className="font-semibold text-white mb-3">Get in touch</div>
           <ul className="flex flex-col gap-2 text-[#cfcfcf]">
             <li><a href={`https://api.whatsapp.com/send?phone=${storePhone}`} className="hover:text-white">WhatsApp</a></li>
-            <li><a href="https://www.instagram.com/hoychoy_cafe/" target="_blank" rel="noreferrer" className="hover:text-white">Instagram</a></li>
-            <li><a href="mailto:hoychoycafe@gmail.com" className="hover:text-white">Email</a></li>
-            <li><a href="https://maps.google.com" target="_blank" rel="noreferrer" className="hover:text-white">Location</a></li>
+            <li><a href={instagram} target="_blank" rel="noreferrer" className="hover:text-white">Instagram</a></li>
+            <li><a href={`mailto:${email}`} className="hover:text-white">Email</a></li>
+            <li><a href={location} target="_blank" rel="noreferrer" className="hover:text-white">Location</a></li>
           </ul>
         </div>
       </div>

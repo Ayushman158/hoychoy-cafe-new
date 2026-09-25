@@ -234,7 +234,12 @@ const NonVegIcon = () => (
           )}
           {!statusLoading && !appOpen && appReason==='CLOSED_BY_OWNER' && (
             <div className="mt-3 p-2 border border-[#222] rounded-xl bg-[#1a1a1a] text-[#f5c84a]">
-              <span>{closingMsg || DEFAULT_CLOSING_MSG}</span>
+              <span>{closingMsg || (overrides?.storeSettings?.openingHours ? `Sorry, we're closed right now. Online orders are available ${overrides.storeSettings.openingHours}.` : DEFAULT_CLOSING_MSG)}</span>
+            </div>
+          )}
+          {!statusLoading && appOpen && overrides?.storeSettings?.announcement && (
+            <div className="mt-3 p-2 border border-[#f5c84a]/30 rounded-xl bg-[#f5c84a]/10 text-[#f5c84a] text-sm">
+              {overrides.storeSettings.announcement}
             </div>
           )}
 

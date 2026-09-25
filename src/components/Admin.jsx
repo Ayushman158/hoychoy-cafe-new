@@ -24,6 +24,30 @@ const NonVegIcon = () => (
   </svg>
 );
 
+const esc = (v)=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const safeHref = (u)=>{ try{ const x=new URL(String(u)); return /^https?:$/.test(x.protocol) ? x.toString() : ''; }catch{ return ''; } };
+// Orders from the server store items flat ({name,price,qty}); older ones nest them under .item.
+const itemName = (it)=> it?.item?.name || it?.name || 'Item';
+const itemPrice = (it)=> Number(it?.item?.price ?? it?.price ?? 0);
+const isPaid = (o)=> o?.paymentState==='PAID' || (!o?.paymentState && ['PAID','ACCEPTED','PREPARING','OUT_FOR_DELIVERY','DELIVERED'].includes(String(o?.status)));
+
+// Shrinks a phone photo to at most 1000px on the long side so uploads stay small.
+function resizeImage(file, maxSide=1000){
+  return new Promise((resolve,reject)=>{
+    const img = new Image();
+    img.onload = ()=>{
+      const scale = Math.min(1, maxSide/Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width*scale); c.height = Math.round(img.height*scale);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(img.src);
+      resolve(c.toDataURL('image/jpeg', 0.82));
+    };
+    img.onerror = ()=>reject(new Error('Could not read that photo'));
+    img.src = URL.createObjectURL(file);
+  });
+}
+
 export default function Admin(){
   const [token,setToken]=useState(()=>localStorage.getItem('hc_admin_token')||'');
   const [authed,setAuthed]=useState(false);
@@ -79,6 +103,10 @@ export default function Admin(){
   const [pwdSuccess,setPwdSuccess]=useState(false);
 
   const [msg,setMsg]=useState("");
+  const [tab,setTab]=useState(()=>{ try{ return localStorage.getItem('hc_admin_tab')||'orders'; }catch{ return 'orders'; } });
+  useEffect(()=>{ try{ localStorage.setItem('hc_admin_tab', tab); }catch{} },[tab]);
+  const [me,setMe]=useState(null);
+  const [uploadingImg,setUploadingImg]=useState(false);
   const [orders,setOrders]=useState([]);
   const [notifs,setNotifs]=useState([]);
   const [unread,setUnread]=useState(0);
@@ -103,10 +131,16 @@ export default function Admin(){
 
   // Store & Contact Settings state
   const [storePhone, setStorePhone] = useState(OWNER_PHONE);
-  const [storeUpi, setStoreUpi] = useState("ayushman15899-4@okaxis");
+  const [storeUpi, setStoreUpi] = useState("");
   const [storeMerchantName, setStoreMerchantName] = useState("HoyChoy Café");
   const [storeMinOrder, setStoreMinOrder] = useState("200");
   const [storePackagingFee, setStorePackagingFee] = useState("0");
+  const [storeGst, setStoreGst] = useState("5");
+  const [storeHours, setStoreHours] = useState("");
+  const [storeAnnouncement, setStoreAnnouncement] = useState("");
+  const [storeEmail, setStoreEmail] = useState("");
+  const [storeInstagram, setStoreInstagram] = useState("");
+  const [storeLocation, setStoreLocation] = useState("");
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsMsg, setSettingsMsg] = useState("");
 
@@ -171,7 +205,8 @@ export default function Admin(){
   const filteredOrders = useMemo(()=>{
     let list = orders || [];
     if(orderFilter==='DELIVERED') list = list.filter(o=>o.status==='DELIVERED');
-    else if(orderFilter==='NEW') list = list.filter(o=>!o.status || o.status==='NEW' || o.status==='PENDING' || o.status==='PAID');
+    else if(orderFilter==='NEW') list = list.filter(o=>isPaid(o) && (!o.status || o.status==='NEW' || o.status==='PAID' || o.status==='PENDING'));
+    else if(orderFilter==='UNPAID') list = list.filter(o=>!isPaid(o) && o.status!=='CANCELLED');
     else if(orderFilter==='ACCEPTED') list = list.filter(o=>o.status==='ACCEPTED' || o.status==='PREPARING');
     else if(orderFilter==='OUT_FOR_DELIVERY') list = list.filter(o=>o.status==='OUT_FOR_DELIVERY');
     else if(orderFilter==='CANCELLED') list = list.filter(o=>o.status==='CANCELLED');
@@ -188,6 +223,16 @@ export default function Admin(){
     }
     return list;
   },[orders,orderFilter,orderSearch]);
+  const today = useMemo(()=>{
+    const start = new Date(); start.setHours(0,0,0,0);
+    const list = (orders||[]).filter(o=>Number(o.createdAt||0)>=start.getTime() && isPaid(o) && o.status!=='CANCELLED');
+    return {
+      count: list.length,
+      revenue: list.reduce((s,o)=>s+Number(o.total||0),0),
+      waiting: (orders||[]).filter(o=>isPaid(o) && (o.status==='PAID'||o.status==='PENDING'||!o.status)).length,
+      active: (orders||[]).filter(o=>o.status==='ACCEPTED'||o.status==='PREPARING'||o.status==='OUT_FOR_DELIVERY').length,
+    };
+  },[orders]);
   const untilLabel = useMemo(()=>{
     try{
       const cu = Number(status.closedUntil||0);
@@ -215,7 +260,7 @@ export default function Admin(){
   useEffect(()=>{
     async function check(){
       if(!token) return;
-    try{ const r=await authedFetch(`${BACKEND_URL}/api/admin/me`,{}); const d=await r.json(); setAuthed(!!d.authed); }catch{}
+    try{ const r=await authedFetch(`${BACKEND_URL}/api/admin/me`,{}); const d=await r.json(); setAuthed(!!d.authed); if(d.authed) setMe(d); }catch{}
     }
     check();
   },[token]);
@@ -223,7 +268,7 @@ export default function Admin(){
   useEffect(()=>{
     if(!authed || !token) return;
     const ping = ()=>{
-      authedFetch(`${BACKEND_URL}/api/admin/me`,{}).then(r=>r.json()).then(d=>setAuthed(!!d.authed)).catch(()=>{});
+      authedFetch(`${BACKEND_URL}/api/admin/me`,{}).then(r=>r.json()).then(d=>{ setAuthed(!!d.authed); if(d.authed) setMe(d); }).catch(()=>{});
     };
     ping();
     const id = setInterval(ping, 10*60*1000);
@@ -231,7 +276,7 @@ export default function Admin(){
     const onVis = ()=>{ try{ if(document.visibilityState==='visible') ping(); }catch{} };
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onVis);
-    return ()=>{ try{ clearInterval(id); }catch{} };
+    return ()=>{ try{ clearInterval(id); window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onVis); }catch{} };
   },[authed, token]);
 
   useEffect(()=>{
@@ -245,12 +290,15 @@ export default function Admin(){
             const d = JSON.parse(ev.data||'{}');
             if(d.type==='init' && Array.isArray(d.orders)) setOrders(d.orders);
             if(d.type==='order.created' && d.order){
-              setOrders((prev)=>[d.order, ...prev]);
-              if(soundAlerts) playAlertTone();
+              // Unpaid checkouts are created here too; only chime once payment lands.
+              setOrders((prev)=>[d.order, ...prev.filter(x=>x.id!==d.order.id)]);
             }
+            if(d.type==='order.deleted') setOrders(prev=>prev.filter(x=>String(x.id)!==String(d.id)));
+            if(d.type==='orders.cleared') setOrders([]);
             if(d.type==='order.updated' && d.order){
-              setOrders((prev)=>prev.map(x=>x.id===d.order.id?d.order:x));
-              if(d.order.status==='PAID'){
+              setOrders((prev)=>prev.some(x=>x.id===d.order.id) ? prev.map(x=>x.id===d.order.id?d.order:x) : [d.order, ...prev]);
+              setSelected(sel=> sel && sel.id===d.order.id ? d.order : sel);
+              if(isPaid(d.order) && (d.order.status==='PAID' || d.order.status==='PENDING')){
                 const info = {id:d.order.id, total:Number(d.order.total||0), ts:Date.now()};
                 const already = (notifiedIds||[]).includes(info.id);
                 if(!already){
@@ -264,13 +312,50 @@ export default function Admin(){
             }
           }catch{}
         };
-        es.onerror = ()=>{ try{ es.close(); }catch{}; setMsg('Connection lost. Reconnecting…'); t=setTimeout(open,2000); };
+        es.onopen = ()=>{ setMsg(m=> m==='Connection lost. Reconnecting…' ? '' : m); };
+        es.onerror = ()=>{ try{ es.close(); }catch{}; setMsg('Connection lost. Reconnecting…'); t=setTimeout(open,3000); };
       }catch{ t=setTimeout(open,2000); }
     }
     open();
     return ()=>{ try{ es && es.close(); }catch{}; try{ clearTimeout(t); }catch{} };
   },[authed, token]);
-  function logout(){ localStorage.removeItem('hc_admin_token'); setToken(''); setAuthed(false); setMsg('Logged out'); }
+  function logout(){
+    try{ fetch(`${BACKEND_URL}/api/admin/logout`,{method:'POST',headers:{'Authorization':`Bearer ${token}`}}); }catch{}
+    localStorage.removeItem('hc_admin_token'); setToken(''); setAuthed(false); setMe(null); setMenuOpen(false); setMsg('Logged out');
+  }
+  async function logoutOthers(){
+    if(!confirm('Sign out every other phone or computer that is logged in to this admin panel?')) return;
+    try{
+      const r = await authedFetch(`${BACKEND_URL}/api/admin/logout-others`,{method:'POST'});
+      const d = await r.json();
+      if(r.ok && d.ok){ setMe(m=>m?{...m, sessions:d.sessions}:m); setMsg('All other devices have been signed out'); }
+      else setMsg('Could not sign out other devices');
+    }catch{ setMsg('Network error'); }
+  }
+  async function uploadPhoto(file, onUrl){
+    if(!file) return;
+    setUploadingImg(true); setMsg('');
+    try{
+      const dataUrl = await resizeImage(file);
+      const r = await authedFetch(`${BACKEND_URL}/api/admin/upload-image`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dataUrl})});
+      const d = await r.json();
+      if(!r.ok || !d.url){ setMsg(d.message || 'Photo upload failed'); return; }
+      onUrl(d.url);
+      setMsg('Photo uploaded — remember to save the dish');
+    }catch(e){ setMsg(e.message || 'Photo upload failed'); }
+    finally{ setUploadingImg(false); }
+  }
+  async function verifyPayment(id){
+    setOrderStatus(s=>({...s,[id]:{pending:true,type:'info',text:'Checking with PhonePe…'}}));
+    try{
+      const r = await authedFetch(`${BACKEND_URL}/api/admin/order-verify-payment`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
+      const d = await r.json();
+      if(!r.ok || !d.ok){ setOrderStatus(s=>({...s,[id]:{pending:false,type:'error',text:d.message||'Could not check payment'}})); return; }
+      setOrders(prev=>prev.map(x=>x.id===id?d.order:x));
+      const st = d.order.paymentState||'PENDING';
+      setOrderStatus(s=>({...s,[id]:{pending:false,type:st==='PAID'?'success':'error',text: st==='PAID' ? 'Payment confirmed by PhonePe' : `PhonePe says: ${st}`}}));
+    }catch{ setOrderStatus(s=>({...s,[id]:{pending:false,type:'error',text:'Network error'}})); }
+  }
 
   async function login(e){
     e.preventDefault(); setMsg(""); setLogging(true);
@@ -287,9 +372,9 @@ export default function Admin(){
         return;
       }
       localStorage.setItem('hc_admin_token', d.token);
-      setToken(d.token); setAuthed(true); setMsg('Logged in');
+      setToken(d.token); setAuthed(true); setPassword(''); setMsg('Logged in');
     }catch{ setMsg('Network error'); }
-    setLogging(false);
+    finally{ setLogging(false); }
   }
 
   async function refreshStatus(){
@@ -310,6 +395,12 @@ export default function Admin(){
           if(d.storeSettings.merchantName) setStoreMerchantName(d.storeSettings.merchantName);
           if(d.storeSettings.minOrderAmount !== undefined) setStoreMinOrder(String(d.storeSettings.minOrderAmount));
           if(d.storeSettings.packagingFee !== undefined) setStorePackagingFee(String(d.storeSettings.packagingFee));
+          if(d.storeSettings.gstPercent !== undefined) setStoreGst(String(d.storeSettings.gstPercent));
+          setStoreHours(d.storeSettings.openingHours||'');
+          setStoreAnnouncement(d.storeSettings.announcement||'');
+          setStoreEmail(d.storeSettings.contactEmail||'');
+          setStoreInstagram(d.storeSettings.instagramUrl||'');
+          setStoreLocation(d.storeSettings.locationUrl||'');
         }
         setOverrides(d||{});
         setItems(getMenu(d).items||[]);
@@ -346,11 +437,16 @@ export default function Admin(){
     try{
       const r=await authedFetch(`${BACKEND_URL}/api/admin/set-availability`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,available})});
       if(!r.ok){ setMsg('Failed to update availability'); return; }
-      const fresh = getMenu().items||[]; setItems(fresh); setMsg('Availability updated');
+      await refreshOverrides(); setMsg(available ? 'Marked in stock' : 'Marked out of stock');
     }catch{ setMsg('Network error'); }
   }
 
-  async function refundOrder(orderId, amount){
+  async function refundOrder(orderId, fullAmount){
+    const already = (orders.find(o=>o.id===orderId)?.refunds||[]).reduce((s,r)=>s+Number(r.amount||0),0);
+    const input = prompt(`Refund how much for order #${orderId}?${already?`\n(₹${already} already refunded)`:''}\nOrder total: ₹${fullAmount}`, String(Math.max(0, Number(fullAmount||0)-already)));
+    if(input===null) return;
+    const amount = Number(input);
+    if(!(amount>0) || amount>Number(fullAmount||0)){ alert('Please enter an amount between ₹1 and the order total'); return; }
     setOrderStatus(s=>({...s,[orderId]:{pending:true,type:'info',text:'Processing refund…'}}));
     setMsg("");
     try{
@@ -358,12 +454,12 @@ export default function Admin(){
       const d=await r.json();
       if(!r.ok || !d.ok){
         const err = d && d.error ? d.error : 'refund-failed';
-        const friendly = err==='refund-not-configured' ? 'Refund is not configured on the server' : (err==='payment-not-verified' ? 'Payment not verified for this order' : 'Refund failed');
+        const friendly = err==='refund-not-configured' ? 'Refund is not configured on the server' : (err==='payment-not-verified' ? 'Payment not verified for this order' : err==='invalid-amount' ? 'Refund amount is more than the order total' : 'Refund failed');
         setOrderStatus(s=>({...s,[orderId]:{pending:false,type:'error',text:friendly}}));
         setMsg(friendly);
         return;
       }
-      setOrderStatus(s=>({...s,[orderId]:{pending:false,type:'success',text:'Refund initiated successfully'}}));
+      setOrderStatus(s=>({...s,[orderId]:{pending:false,type:'success',text:`Refund of ₹${amount} initiated (money reaches the customer in 3–5 days)`}}));
       setMsg('Refund initiated successfully');
     }catch{
       setOrderStatus(s=>({...s,[orderId]:{pending:false,type:'error',text:'Network error'}}));
@@ -393,7 +489,8 @@ export default function Admin(){
     }catch{ setMsg('Network error'); }
   }
   async function clearAll(){
-    if(!confirm('Clear all orders? This cannot be undone.')) return;
+    const typed = prompt('This permanently deletes the whole order history. Type DELETE to confirm.');
+    if(String(typed||'').trim().toUpperCase()!=='DELETE') return;
     setMsg("");
     try{
       const r=await authedFetch(`${BACKEND_URL}/api/admin/orders-clear`,{method:'POST',headers:{'Content-Type':'application/json'}});
@@ -702,8 +799,8 @@ export default function Admin(){
       setPwdMsg("Please enter your current password");
       return;
     }
-    if(!pwdNew || pwdNew.length < 6){
-      setPwdMsg("New password must be at least 6 characters long");
+    if(!pwdNew || pwdNew.length < 8){
+      setPwdMsg("New password must be at least 8 characters long");
       return;
     }
     if(pwdNew !== pwdConfirm){
@@ -725,7 +822,8 @@ export default function Admin(){
         return;
       }
       setPwdSuccess(true);
-      setPwdMsg("Password changed successfully! Keep your new password secure.");
+      setPwdMsg(d.message || "Password changed successfully!");
+      setMe(m=>m?{...m, defaultPassword:false, sessions:1}:m);
       setPwdCurrent("");
       setPwdNew("");
       setPwdConfirm("");
@@ -786,7 +884,7 @@ export default function Admin(){
       const r = await authedFetch(`${BACKEND_URL}/api/admin/debug/send-telegram`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: "Test alert from HoyChoy Cafe Admin Panel. Everything is working correctly!" })
+        body: JSON.stringify({ text: "✅ Test alert from HoyChoy Café admin panel. Order alerts will arrive here." })
       });
       const d = await r.json();
       if(r.ok && d.ok){
@@ -813,7 +911,13 @@ export default function Admin(){
           upiId: storeUpi,
           merchantName: storeMerchantName,
           minOrderAmount: Number(storeMinOrder || 0),
-          packagingFee: Number(storePackagingFee || 0)
+          packagingFee: Number(storePackagingFee || 0),
+          gstPercent: Number(storeGst || 0),
+          openingHours: storeHours,
+          announcement: storeAnnouncement,
+          contactEmail: storeEmail,
+          instagramUrl: storeInstagram,
+          locationUrl: storeLocation
         })
       });
       const d = await r.json();
@@ -910,19 +1014,21 @@ export default function Admin(){
     if(!o) return;
     const w = window.open('', '_blank', 'width=600,height=700');
     if(!w) { alert('Popup blocked. Please allow popups to print receipt.'); return; }
+    // Everything below is escaped: the name/address/note come from customers,
+    // and this window shares the admin page's origin (and its login token).
     const itemsHtml = (o.items||[]).map(it => `
       <tr>
-        <td style="padding:6px 0; border-bottom:1px dashed #ddd;">${it.item?.name || 'Item'}</td>
-        <td style="padding:6px 0; text-align:center; border-bottom:1px dashed #ddd;">×${it.qty}</td>
-        <td style="padding:6px 0; text-align:right; border-bottom:1px dashed #ddd;">₹${Number(it.item?.price||0) * it.qty}</td>
+        <td style="padding:6px 0; border-bottom:1px dashed #ddd;">${esc(itemName(it))}</td>
+        <td style="padding:6px 0; text-align:center; border-bottom:1px dashed #ddd;">×${esc(it.qty)}</td>
+        <td style="padding:6px 0; text-align:right; border-bottom:1px dashed #ddd;">₹${itemPrice(it) * Number(it.qty||0)}</td>
       </tr>
     `).join('');
-    
+    const subtotal = o.subtotal ?? (o.items||[]).reduce((s,it)=>s+itemPrice(it)*Number(it.qty||0),0);
     const html = `
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Order Receipt #${o.id}</title>
+        <title>Order Receipt #${esc(o.id)}</title>
         <style>
           body { font-family: monospace, -apple-system, sans-serif; padding: 20px; max-width: 380px; margin: 0 auto; color: #000; font-size: 13px; line-height: 1.4; }
           .center { text-align: center; }
@@ -937,18 +1043,19 @@ export default function Admin(){
         </style>
       </head>
       <body>
-        <div class="center bold" style="font-size: 18px; letter-spacing: 1px;">HOYCHOY CAFÉ</div>
+        <div class="center bold" style="font-size: 18px; letter-spacing: 1px;">${esc((storeMerchantName||'HoyChoy Café').toUpperCase())}</div>
         <div class="center" style="font-size: 11px; color: #444; margin-top: 2px;">KITCHEN ORDER TICKET & BILL</div>
         <div class="divider"></div>
-        <div class="flex"><span>Order ID:</span><span class="bold">#${o.id}</span></div>
-        <div class="flex"><span>Date:</span><span>${new Date(o.createdAt || Date.now()).toLocaleString()}</span></div>
-        <div class="flex"><span>Status:</span><span class="bold">${o.status || 'PAID'}</span></div>
-        ${o.prepTime ? `<div class="flex"><span>Prep Time:</span><span class="bold">${o.prepTime}</span></div>` : ''}
+        <div class="flex"><span>Order ID:</span><span class="bold">#${esc(o.id)}</span></div>
+        <div class="flex"><span>Date:</span><span>${esc(new Date(o.createdAt || Date.now()).toLocaleString())}</span></div>
+        <div class="flex"><span>Status:</span><span class="bold">${esc(o.status || 'PAID')}</span></div>
+        <div class="flex"><span>Payment:</span><span class="bold">${isPaid(o) ? 'PAID (PhonePe)' : 'NOT PAID'}</span></div>
+        ${o.prepTime ? `<div class="flex"><span>Prep Time:</span><span class="bold">${esc(o.prepTime)}</span></div>` : ''}
         <div class="divider"></div>
-        <div><span class="bold">Customer:</span> ${o.customer?.name || 'Guest'}</div>
-        <div><span class="bold">Phone:</span> ${o.customer?.phone || 'N/A'}</div>
-        <div><span class="bold">Address:</span> ${o.customer?.address || 'N/A'}</div>
-        ${o.customer?.note ? `<div style="margin-top:4px;"><span class="bold">Note:</span> <i>${o.customer.note}</i></div>` : ''}
+        <div><span class="bold">Customer:</span> ${esc(o.customer?.name || 'Guest')}</div>
+        <div><span class="bold">Phone:</span> ${esc(o.customer?.phone || 'N/A')}</div>
+        <div><span class="bold">Address:</span> ${esc(o.customer?.address || 'N/A')}</div>
+        ${o.customer?.note ? `<div style="margin-top:4px;"><span class="bold">Note:</span> <i>${esc(o.customer.note)}</i></div>` : ''}
         <div class="divider"></div>
         <table>
           <thead>
@@ -963,14 +1070,15 @@ export default function Admin(){
           </tbody>
         </table>
         <div class="divider"></div>
-        <div class="flex"><span>Subtotal:</span><span>₹${o.total || 0}</span></div>
-        ${o.gst ? `<div class="flex"><span>GST:</span><span>₹${o.gst}</span></div>` : ''}
-        ${o.deliveryFee ? `<div class="flex"><span>Delivery Fee:</span><span>₹${o.deliveryFee}</span></div>` : ''}
-        ${o.packagingFee ? `<div class="flex"><span>Packaging Fee:</span><span>₹${o.packagingFee}</span></div>` : ''}
+        <div class="flex"><span>Subtotal:</span><span>₹${esc(subtotal)}</span></div>
+        ${o.discountPct ? `<div class="flex"><span>Coupon ${esc(o.coupon||'')} (${esc(o.discountPct)}%):</span><span>-₹${esc(Math.round(subtotal*o.discountPct/100))}</span></div>` : ''}
+        ${o.gst ? `<div class="flex"><span>GST:</span><span>₹${esc(o.gst)}</span></div>` : ''}
+        ${o.deliveryFee ? `<div class="flex"><span>Delivery Fee:</span><span>₹${esc(o.deliveryFee)}</span></div>` : ''}
+        ${o.packagingFee ? `<div class="flex"><span>Packaging Fee:</span><span>₹${esc(o.packagingFee)}</span></div>` : ''}
         <div class="divider"></div>
-        <div class="flex bold" style="font-size: 15px;"><span>GRAND TOTAL:</span><span>₹${o.grandTotal || o.total || 0}</span></div>
+        <div class="flex bold" style="font-size: 15px;"><span>GRAND TOTAL:</span><span>₹${esc(o.total || 0)}</span></div>
         <div class="divider"></div>
-        <div class="center" style="font-size: 11px; color: #555;">Thank you for ordering with HoyChoy Café!</div>
+        <div class="center" style="font-size: 11px; color: #555;">Thank you for ordering with ${esc(storeMerchantName||'HoyChoy Café')}!</div>
         <script>
           window.onload = function() { window.print(); };
         </script>
@@ -983,7 +1091,7 @@ export default function Admin(){
   }
 
   return (
-    <section className="max-w-[900px] mx-auto px-4 pt-[calc(env(safe-area-inset-top)+8px)] pb-[calc(env(safe-area-inset-bottom)+12px)] md:pt-0 overflow-x-hidden">
+    <section className="max-w-[900px] mx-auto px-4 pt-[calc(env(safe-area-inset-top)+8px)] pb-[calc(env(safe-area-inset-bottom)+12px)] md:pt-0 overflow-x-clip">
       <div className="hc-safe-buffer"></div>
       <div className="flex items-center justify-between">
         <div className="font-bold text-lg">Admin Panel</div>
@@ -1023,7 +1131,23 @@ export default function Admin(){
           </ul>
         </div>
       )}
-      {msg && <div className="mt-2 text-[#f5c84a]">{msg}</div>}
+      {authed && me?.defaultPassword && (
+        <div className="mt-3 p-3 rounded-xl border border-error bg-[#261818] text-error text-sm flex flex-wrap items-center justify-between gap-2">
+          <span><b>Security:</b> you are still using the original password, which other people may know. Please change it now.</span>
+          <button className="btn text-xs" type="button" onClick={()=>setTab('settings')}>Change password</button>
+        </div>
+      )}
+      {authed && (
+        <div className="sticky top-0 z-[50] -mx-4 px-4 pt-2 pb-2 bg-[#0a0a0a]/95 backdrop-blur border-b border-[#1e1e1e] mt-2">
+          <div className="grid grid-cols-3 gap-1 bg-[#111] border border-[#222] rounded-xl p-1" role="tablist">
+            {[['orders',`Orders${today.waiting?` (${today.waiting})`:''}`],['menu','Menu'],['settings','Settings']].map(([k,label])=>(
+              <button key={k} type="button" role="tab" aria-selected={tab===k} onClick={()=>setTab(k)}
+                className={`py-2 rounded-lg text-sm font-semibold transition ${tab===k?'bg-[#f5c84a] text-black':'text-white/80 hover:text-white'}`}>{label}</button>
+            ))}
+          </div>
+        </div>
+      )}
+      {msg && <div className="mt-2 text-[#f5c84a]" role="status">{msg}</div>}
       {!authed && (
         <div className="card mt-3">
           <div className="section-title">Admin Login</div>
@@ -1041,87 +1165,34 @@ export default function Admin(){
           </form>
         </div>
       )}
-      {authed && (
-      <div className="card mt-3">
-        <div className="section-title">Restaurant Status</div>
-        <div className="row"><span>Current</span><span className="font-bold">{status.open?'OPEN':'CLOSED'} ({status.reason})</span></div>
-        <div className="flex flex-wrap items-center gap-3 mt-2">
-          <span className="text-sm">Owner Toggle</span>
-          <button
-            type="button"
-            onClick={()=>setOpen(ownerClosed)}
-            aria-pressed={!ownerClosed}
-            className={`relative inline-flex items-center h-10 w-24 rounded-full border transition ${!ownerClosed?'bg-[#f5c84a] text-black border-[#f5c84a]':'bg-transparent text-white border-[#444]'} ${toggling?'opacity-70 cursor-not-allowed':''}`}
-            disabled={toggling}
-          >
-            <span className={`absolute left-3 text-xs font-bold ${!ownerClosed?'opacity-100':'opacity-40'}`}>ON</span>
-            <span className={`absolute right-3 text-xs font-bold ${ownerClosed?'opacity-100':'opacity-40'}`}>OFF</span>
-            <span className={`inline-block h-7 w-7 rounded-full bg-white shadow transform transition ${!ownerClosed?'translate-x-12':'translate-x-1'}`}></span>
-          </button>
-          <span className="text-sm text-muted">{!ownerClosed?'Open':'Closed by owner'}</span>
-          {untilLabel && <span className="text-xs text-[#f5c84a] ml-2">{untilLabel}</span>}
-          {ownerClosed===false && (
-            <span className="flex flex-wrap items-center gap-2 ml-0 sm:ml-4">
-              <span className="text-xs">Close for</span>
-              <select className="bg-[#111] border border-[#222] rounded-xl p-1 text-xs w-full sm:w-auto" value={closureDuration} onChange={e=>setClosureDuration(e.target.value)}>
-                <option value="0">Until I reopen</option>
-                <option value="7200000">2 hours</option>
-                <option value="21600000">6 hours</option>
-                <option value="43200000">12 hours</option>
-              </select>
-              <span className="text-xs">or until</span>
-              <input type="date" className="bg-[#111] border border-[#222] rounded-xl p-1 text-xs w-full sm:w-auto" value={customDate} onChange={e=>setCustomDate(e.target.value)} />
-              <input type="time" className="bg-[#111] border border-[#222] rounded-xl p-1 text-xs w-full sm:w-auto" value={customTime} onChange={e=>setCustomTime(e.target.value)} />
-            </span>
-          )}
-        </div>
-        <div className="flex gap-2 mt-2">
-          <button className="btn" onClick={()=>{refreshStatus();refreshOverrides();}}>Refresh</button>
-        </div>
-        <div className="mt-3">
-          <div className="section-title">Closing Message</div>
-          <div className="text-muted text-xs mb-2">Shown on the customer app when the restaurant is closed by owner.</div>
-          <div className="grid grid-cols-1 gap-2">
-            <select className="bg-[#111] border border-[#222] rounded-xl p-2" onChange={e=>setClosingMessage(e.target.value)} value={closingMessage}>
-              {[
-                '😔 Sorry, our restaurant is closed today. Online orders are available 12:00–9:00 PM.',
-                'We are closed today. Thank you for your support! 🫶',
-                'Delivery partners are currently unavailable. Please try again later.',
-                'We’re closing early today. Thank you for understanding.',
-                'Kitchen is taking a short break. We’ll be back soon.',
-                'Closed due to maintenance. We will be back soon ✨',
-                'Closed for a private event. See you tomorrow!',
-                'We will reopen tomorrow at 12:00 PM.',
-                closingMessage||''
-              ].filter((v,i,a)=>v && a.indexOf(v)===i).map((v,i)=>(<option key={i} value={v}>{v}</option>))}
-            </select>
-            <textarea className="bg-[#111] border border-[#222] rounded-xl p-2 min-h-[80px]" value={closingMessage} onChange={e=>setClosingMessage(e.target.value)} placeholder="Custom message (optional)" />
-            <div className="flex gap-2">
-              <button className="btn btn-primary" type="button" onClick={async ()=>{
-                setMsg("");
-                try{
-                  const r=await authedFetch(`${BACKEND_URL}/api/admin/set-closing-message`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({preset:'custom',message:closingMessage})});
-                  const d=await r.json();
-                  if(!r.ok || !d.ok){ setMsg('Failed to save message'); return; }
-                  setMsg('Closing message updated');
-                  await refreshOverrides();
-                }catch{ setMsg('Network error'); }
-              }}>Save Message</button>
+      {authed && tab==='orders' && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
+          {[
+            ['Waiting to accept', today.waiting, today.waiting? 'text-[#f5c84a]':'text-white'],
+            ['In progress', today.active, 'text-blue-300'],
+            ["Today's paid orders", today.count, 'text-white'],
+            ["Today's sales", `₹${today.revenue.toLocaleString('en-IN')}`, 'text-success'],
+          ].map(([label,val,cls])=>(
+            <div key={label} className="bg-[#111] border border-[#222] rounded-xl p-3">
+              <div className="text-[11px] text-muted">{label}</div>
+              <div className={`text-lg font-extrabold ${cls}`}>{val}</div>
             </div>
-          </div>
+          ))}
         </div>
-      </div>
       )}
-
-      {authed && (
+      {authed && tab==='settings' && (
       <div className="card mt-3">
         <div className="section-title flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <span>Admin Security & Password</span>
           </div>
-          <span className="text-xs text-muted font-normal">Account: {email || 'hoychoycafe@gmail.com'}</span>
+          <span className="text-xs text-muted font-normal">Account: {me?.email || email || 'hoychoycafe@gmail.com'}</span>
         </div>
-        <p className="text-xs text-muted mb-3">Change your admin password anytime. Your new password will be saved securely and used for all future logins.</p>
+        <p className="text-xs text-muted mb-3">Change your admin password anytime. Changing it signs out every other device.</p>
+        <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 mb-3 rounded-xl bg-[#141414] border border-[#222] text-xs">
+          <span>Logged-in devices: <b>{me?.sessions ?? '–'}</b> <span className="text-muted">(lost a phone? sign the others out)</span></span>
+          <button type="button" className="btn text-xs" onClick={logoutOthers}>Sign out other devices</button>
+        </div>
 
         {pwdMsg && (
           <div className={`p-3 rounded-xl mb-3 text-xs flex items-center gap-2 border ${pwdSuccess ? 'bg-[#182618] border-success text-success' : 'bg-[#261818] border-error text-error'}`}>
@@ -1154,7 +1225,7 @@ export default function Admin(){
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-muted block mb-1">New Password (min 6 characters)</label>
+              <label className="text-xs text-muted block mb-1">New Password (min 8 characters)</label>
               <div className="flex gap-2">
                 <input
                   className="flex-1 bg-[#111] border border-[#222] rounded-xl p-2.5 text-sm"
@@ -1162,7 +1233,7 @@ export default function Admin(){
                   type={showPwdNew ? 'text' : 'password'}
                   value={pwdNew}
                   onChange={e=>setPwdNew(e.target.value)}
-                  minLength={6}
+                  minLength={8}
                   required
                 />
                 <button
@@ -1184,7 +1255,7 @@ export default function Admin(){
                   type={showPwdConfirm ? 'text' : 'password'}
                   value={pwdConfirm}
                   onChange={e=>setPwdConfirm(e.target.value)}
-                  minLength={6}
+                  minLength={8}
                   required
                 />
                 <button
@@ -1215,7 +1286,7 @@ export default function Admin(){
       </div>
       )}
 
-      {authed && (
+      {authed && tab==='settings' && (
       <div className="card mt-3">
         <div className="section-title">Coupon Management</div>
         <div className="grid grid-cols-1 gap-2">
@@ -1285,7 +1356,7 @@ export default function Admin(){
         </div>
       </div>
       )}
-      {authed && (
+      {authed && tab==='settings' && (
       <div className="card mt-3">
         <div className="section-title">Delivery Rates & Radius Management</div>
         <div className="flex flex-col gap-3">
@@ -1462,7 +1533,7 @@ export default function Admin(){
       </div>
       )}
 
-      {authed && (
+      {authed && tab==='settings' && (
       <div className="card mt-3">
         <div className="section-title">Store & Contact Settings</div>
         <div className="text-muted text-xs mb-3">Configure WhatsApp order notification phone, UPI payment address, minimum order value, and packaging fee.</div>
@@ -1487,15 +1558,14 @@ export default function Admin(){
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-muted">UPI ID / VPA *</label>
+            <label className="text-xs font-semibold text-muted">UPI ID / VPA</label>
             <input
               className="bg-[#111] border border-[#222] rounded-xl p-2 text-sm"
-              placeholder="e.g. ayushman15899-4@okaxis"
+              placeholder="e.g. hoychoycafe@okaxis"
               value={storeUpi}
               onChange={e => setStoreUpi(e.target.value)}
-              required
             />
-            <span className="text-[11px] text-muted">VPA for receiving customer UPI payments</span>
+            <span className="text-[11px] text-muted">Optional. Online payments go through PhonePe; this is for reference only.</span>
           </div>
 
           <div className="flex flex-col gap-1">
@@ -1536,6 +1606,40 @@ export default function Admin(){
             <span className="text-[11px] text-muted">Added to delivery orders for food containers/bags (₹0 if none)</span>
           </div>
 
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-muted">GST (%)</label>
+            <input type="number" min="0" max="28" step="0.5" className="bg-[#111] border border-[#222] rounded-xl p-2 text-sm" value={storeGst} onChange={e=>setStoreGst(e.target.value)} />
+            <span className="text-[11px] text-muted">Added to every bill. Default 5%.</span>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-muted">Opening Hours</label>
+            <input className="bg-[#111] border border-[#222] rounded-xl p-2 text-sm" placeholder="e.g. 12:00 PM – 9:00 PM" value={storeHours} onChange={e=>setStoreHours(e.target.value)} />
+            <span className="text-[11px] text-muted">Shown on the website and in the "we're closed" message</span>
+          </div>
+
+          <div className="flex flex-col gap-1 sm:col-span-2">
+            <label className="text-xs font-semibold text-muted">Announcement Banner</label>
+            <input className="bg-[#111] border border-[#222] rounded-xl p-2 text-sm" maxLength={200} placeholder="e.g. 🎉 20% off with code WEEKEND this Saturday & Sunday" value={storeAnnouncement} onChange={e=>setStoreAnnouncement(e.target.value)} />
+            <span className="text-[11px] text-muted">Shown at the top of the menu page. Leave empty to hide it.</span>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-muted">Contact Email</label>
+            <input type="email" className="bg-[#111] border border-[#222] rounded-xl p-2 text-sm" placeholder="hoychoycafe@gmail.com" value={storeEmail} onChange={e=>setStoreEmail(e.target.value)} />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-muted">Instagram Link</label>
+            <input className="bg-[#111] border border-[#222] rounded-xl p-2 text-sm" placeholder="https://www.instagram.com/hoychoy_cafe/" value={storeInstagram} onChange={e=>setStoreInstagram(e.target.value)} />
+          </div>
+
+          <div className="flex flex-col gap-1 sm:col-span-2">
+            <label className="text-xs font-semibold text-muted">Google Maps Location Link</label>
+            <input className="bg-[#111] border border-[#222] rounded-xl p-2 text-sm" placeholder="Paste the Share link from Google Maps" value={storeLocation} onChange={e=>setStoreLocation(e.target.value)} />
+            <span className="text-[11px] text-muted">Used for the "Location" link in the website footer</span>
+          </div>
+
           <div className="sm:col-span-2 flex gap-2 mt-1">
             <button
               type="submit"
@@ -1556,7 +1660,7 @@ export default function Admin(){
       </div>
       )}
 
-      {authed && (
+      {authed && tab==='settings' && (
       <div className="card mt-3">
         <div className="section-title flex items-center justify-between">
           <span>Telegram Alerts & Notifications</span>
@@ -1628,7 +1732,7 @@ export default function Admin(){
       </div>
       )}
 
-      {authed && (
+      {authed && tab==='menu' && (
       <div className="card mt-3">
         <div className="section-title flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -1732,7 +1836,7 @@ export default function Admin(){
       </div>
       )}
 
-      {authed && (
+      {authed && tab==='menu' && (
       <div className="card mt-3">
         <div className="section-title flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -1992,7 +2096,7 @@ export default function Admin(){
       </div>
       )}
 
-      {authed && (
+      {authed && tab==='menu' && (
       <div className="card mt-3">
         <div className="section-title">Add New Dish to Menu</div>
         <form onSubmit={addItem} className="flex flex-col gap-2.5">
@@ -2069,12 +2173,18 @@ export default function Admin(){
           </div>
 
           <div className="flex flex-col gap-1">
-            <input
-              className="bg-[#111] border border-[#222] rounded-xl p-2 text-sm"
-              placeholder="Dish Image URL (optional direct image link)"
-              value={addImage}
-              onChange={e=>setAddImage(e.target.value)}
-            />
+            <div className="flex gap-2">
+              <input
+                className="flex-1 min-w-0 bg-[#111] border border-[#222] rounded-xl p-2 text-sm"
+                placeholder="Dish photo link (or upload a photo →)"
+                value={addImage}
+                onChange={e=>setAddImage(e.target.value)}
+              />
+              <label className={`btn text-xs whitespace-nowrap cursor-pointer ${uploadingImg?'opacity-60 pointer-events-none':''}`}>
+                {uploadingImg ? 'Uploading…' : 'Upload photo'}
+                <input type="file" accept="image/*" className="hidden" onChange={e=>{ const f=e.target.files?.[0]; e.target.value=''; uploadPhoto(f, setAddImage); }} />
+              </label>
+            </div>
             {addImage && (
               <div className="flex items-center gap-2 p-2 bg-[#141414] border border-[#222] rounded-xl">
                 <img src={addImage} alt="Preview" className="w-12 h-12 rounded-lg object-cover border border-[#333]" onError={(e)=>{ e.currentTarget.style.display='none'; }} />
@@ -2154,7 +2264,7 @@ export default function Admin(){
 
               <div>
                 <label className="text-xs text-muted block mb-1">
-                  Image URL <span className="text-[#888] font-normal">(direct link from PostImages, ImgBB, Cloudinary, etc.)</span>
+                  Photo <span className="text-[#888] font-normal">(upload from your phone, or paste an image link)</span>
                 </label>
                 <div className="flex gap-2">
                   <input
@@ -2163,6 +2273,10 @@ export default function Admin(){
                     value={editingItem.image || ''}
                     onChange={e=>setEditingItem(s=>({...s, image: e.target.value}))}
                   />
+                  <label className={`btn text-xs px-2.5 whitespace-nowrap cursor-pointer ${uploadingImg?'opacity-60 pointer-events-none':''}`}>
+                    {uploadingImg ? 'Uploading…' : 'Upload'}
+                    <input type="file" accept="image/*" className="hidden" onChange={e=>{ const f=e.target.files?.[0]; e.target.value=''; uploadPhoto(f, (url)=>setEditingItem(s=>({...s, image:url}))); }} />
+                  </label>
                   {editingItem.image && (
                     <button type="button" className="btn text-xs px-2.5" onClick={()=>setEditingItem(s=>({...s, image: ''}))}>Clear</button>
                   )}
@@ -2195,7 +2309,7 @@ export default function Admin(){
         </div>
       )}
 
-      {authed && (
+      {authed && tab==='orders' && (
         <div className="card mt-3">
           <div className="section-title flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
@@ -2239,7 +2353,8 @@ export default function Admin(){
               onChange={e=>setOrderFilter(e.target.value)}
             >
               <option value="ALL">All Statuses</option>
-              <option value="NEW">New / Paid</option>
+              <option value="NEW">New (paid, waiting)</option>
+              <option value="UNPAID">Payment pending / failed</option>
               <option value="ACCEPTED">Accepted / In Kitchen</option>
               <option value="OUT_FOR_DELIVERY">Out for Delivery</option>
               <option value="DELIVERED">Delivered</option>
@@ -2259,7 +2374,7 @@ export default function Admin(){
                       <div className="flex items-center gap-2">
                         <span className="font-mono font-bold text-sm text-[#f5c84a]">#{o.id}</span>
                         <span className="font-bold text-sm">₹{o.grandTotal || o.total}</span>
-                        <span className="text-muted text-xs">• {new Date(o.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                        <span className="text-muted text-xs">• {new Date(o.createdAt).toLocaleString([], {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'})}</span>
                       </div>
                       <div className="flex items-center gap-1.5">
                         <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${
@@ -2271,6 +2386,9 @@ export default function Admin(){
                         }`}>
                           {upperStatus}{o.prepTime && upperStatus === 'ACCEPTED' ? ` (${o.prepTime})` : ''}
                         </span>
+                        {isPaid(o)
+                          ? <span className="text-[11px] px-2 py-0.5 rounded-full font-semibold bg-success/15 text-success border border-success/30">PAID</span>
+                          : <span className="text-[11px] px-2 py-0.5 rounded-full font-semibold bg-error/15 text-error border border-error/30">{o.paymentState==='FAILED'?'PAYMENT FAILED':'NOT PAID'}</span>}
                       </div>
                     </div>
 
@@ -2289,7 +2407,17 @@ export default function Admin(){
                         Details & KOT
                       </button>
 
-                      {upperStatus !== 'DELIVERED' && upperStatus !== 'CANCELLED' && (
+                      {!isPaid(o) && upperStatus !== 'CANCELLED' && (
+                        <button
+                          className="px-2 py-1 text-xs rounded-lg bg-[#222] hover:bg-[#2c2c2c] border border-[#333] text-white"
+                          onClick={()=>verifyPayment(o.id)}
+                          disabled={orderStatus[o.id]?.pending}
+                          title="Ask PhonePe whether this customer actually paid"
+                        >
+                          Re-check payment
+                        </button>
+                      )}
+                      {isPaid(o) && upperStatus !== 'DELIVERED' && upperStatus !== 'CANCELLED' && (
                         <>
                           {upperStatus !== 'ACCEPTED' && upperStatus !== 'OUT_FOR_DELIVERY' && (
                             <>
@@ -2333,13 +2461,15 @@ export default function Admin(){
                         </>
                       )}
 
-                      <button
-                        className="px-2 py-1 text-xs rounded-lg bg-[#222] hover:bg-[#2c2c2c] border border-[#333] text-muted hover:text-white"
-                        onClick={()=>{ if(confirm(`Refund ₹${o.total}?`)) refundOrder(o.id, o.total); }}
-                        disabled={orderStatus[o.id]?.pending}
-                      >
-                        Refund
-                      </button>
+                      {isPaid(o) && (
+                        <button
+                          className="px-2 py-1 text-xs rounded-lg bg-[#222] hover:bg-[#2c2c2c] border border-[#333] text-muted hover:text-white"
+                          onClick={()=>refundOrder(o.id, o.total)}
+                          disabled={orderStatus[o.id]?.pending}
+                        >
+                          Refund{(o.refunds||[]).length ? ` (₹${o.refunds.reduce((s,r)=>s+Number(r.amount||0),0)} done)` : ''}
+                        </button>
+                      )}
 
                       <button
                         className="p-1 rounded-lg text-[#ff8aa0] hover:bg-[#222] ml-auto"
@@ -2367,6 +2497,78 @@ export default function Admin(){
         </div>
       )}
 
+      {authed && tab==='orders' && (
+      <div className="card mt-3">
+        <div className="section-title">Restaurant Status (open / close online orders)</div>
+        <div className="row"><span>Current</span><span className="font-bold">{status.open?'OPEN':'CLOSED'} ({status.reason})</span></div>
+        <div className="flex flex-wrap items-center gap-3 mt-2">
+          <span className="text-sm">Owner Toggle</span>
+          <button
+            type="button"
+            onClick={()=>setOpen(ownerClosed)}
+            aria-pressed={!ownerClosed}
+            className={`relative inline-flex items-center h-10 w-24 rounded-full border transition ${!ownerClosed?'bg-[#f5c84a] text-black border-[#f5c84a]':'bg-transparent text-white border-[#444]'} ${toggling?'opacity-70 cursor-not-allowed':''}`}
+            disabled={toggling}
+          >
+            <span className={`absolute left-3 text-xs font-bold ${!ownerClosed?'opacity-100':'opacity-40'}`}>ON</span>
+            <span className={`absolute right-3 text-xs font-bold ${ownerClosed?'opacity-100':'opacity-40'}`}>OFF</span>
+            <span className={`inline-block h-7 w-7 rounded-full bg-white shadow transform transition ${!ownerClosed?'translate-x-12':'translate-x-1'}`}></span>
+          </button>
+          <span className="text-sm text-muted">{!ownerClosed?'Open':'Closed by owner'}</span>
+          {untilLabel && <span className="text-xs text-[#f5c84a] ml-2">{untilLabel}</span>}
+          {ownerClosed===false && (
+            <span className="flex flex-wrap items-center gap-2 ml-0 sm:ml-4">
+              <span className="text-xs">Close for</span>
+              <select className="bg-[#111] border border-[#222] rounded-xl p-1 text-xs w-full sm:w-auto" value={closureDuration} onChange={e=>setClosureDuration(e.target.value)}>
+                <option value="0">Until I reopen</option>
+                <option value="7200000">2 hours</option>
+                <option value="21600000">6 hours</option>
+                <option value="43200000">12 hours</option>
+              </select>
+              <span className="text-xs">or until</span>
+              <input type="date" className="bg-[#111] border border-[#222] rounded-xl p-1 text-xs w-full sm:w-auto" value={customDate} onChange={e=>setCustomDate(e.target.value)} />
+              <input type="time" className="bg-[#111] border border-[#222] rounded-xl p-1 text-xs w-full sm:w-auto" value={customTime} onChange={e=>setCustomTime(e.target.value)} />
+            </span>
+          )}
+        </div>
+        <div className="flex gap-2 mt-2">
+          <button className="btn" onClick={()=>{refreshStatus();refreshOverrides();}}>Refresh</button>
+        </div>
+        <div className="mt-3">
+          <div className="section-title">Closing Message</div>
+          <div className="text-muted text-xs mb-2">Shown on the customer app when the restaurant is closed by owner.</div>
+          <div className="grid grid-cols-1 gap-2">
+            <select className="bg-[#111] border border-[#222] rounded-xl p-2" onChange={e=>setClosingMessage(e.target.value)} value={closingMessage}>
+              {[
+                '😔 Sorry, our restaurant is closed today. Online orders are available 12:00–9:00 PM.',
+                'We are closed today. Thank you for your support! 🫶',
+                'Delivery partners are currently unavailable. Please try again later.',
+                'We’re closing early today. Thank you for understanding.',
+                'Kitchen is taking a short break. We’ll be back soon.',
+                'Closed due to maintenance. We will be back soon ✨',
+                'Closed for a private event. See you tomorrow!',
+                'We will reopen tomorrow at 12:00 PM.',
+                closingMessage||''
+              ].filter((v,i,a)=>v && a.indexOf(v)===i).map((v,i)=>(<option key={i} value={v}>{v}</option>))}
+            </select>
+            <textarea className="bg-[#111] border border-[#222] rounded-xl p-2 min-h-[80px]" value={closingMessage} onChange={e=>setClosingMessage(e.target.value)} placeholder="Custom message (optional)" />
+            <div className="flex gap-2">
+              <button className="btn btn-primary" type="button" onClick={async ()=>{
+                setMsg("");
+                try{
+                  const r=await authedFetch(`${BACKEND_URL}/api/admin/set-closing-message`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({preset:'custom',message:closingMessage})});
+                  const d=await r.json();
+                  if(!r.ok || !d.ok){ setMsg('Failed to save message'); return; }
+                  setMsg('Closing message updated');
+                  await refreshOverrides();
+                }catch{ setMsg('Network error'); }
+              }}>Save Message</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      )}
+
           {authed && selected && (
             <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[110] flex items-center justify-center p-3" onClick={()=>setSelected(null)}>
               <div className="bg-[#0f0f0f] border border-[#2a2a2a] rounded-2xl p-4 sm:p-5 w-[640px] max-w-full max-h-[85vh] overflow-y-auto shadow-2xl" onClick={e=>e.stopPropagation()}>
@@ -2376,12 +2578,13 @@ export default function Admin(){
                     <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-[#222] text-[#f5c84a]">
                       {selected.status || 'NEW'}
                     </span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${isPaid(selected)?'bg-success/15 text-success':'bg-error/15 text-error'}`}>{isPaid(selected)?'PAID':'NOT PAID'}</span>
                   </div>
                   <button className="text-gray-400 hover:text-white p-1 text-lg font-bold" onClick={()=>setSelected(null)}>✕</button>
                 </div>
 
                 <div className="mt-3 flex flex-wrap gap-2 items-center justify-between bg-[#151515] p-3 rounded-xl border border-[#252525]">
-                  <div>
+                  <div className={isPaid(selected)?'':'opacity-40 pointer-events-none'} aria-disabled={!isPaid(selected)}>
                     <div className="text-xs text-muted">Change Status:</div>
                     <div className="flex flex-wrap gap-1.5 mt-1">
                       <button className="text-xs px-2 py-1 rounded-lg bg-blue-950/60 border border-blue-700/60 text-blue-300" onClick={()=>updateOrderStatus(selected.id, 'ACCEPTED', '15 mins')}>Accept (15m)</button>
@@ -2412,6 +2615,9 @@ export default function Admin(){
                 <div className="mt-3 space-y-2">
                   <div className="row"><span>Customer</span><span className="font-semibold">{selected.customer?.name} • {selected.customer?.phone}</span></div>
                   <div className="row"><span>Total Amount</span><span className="font-bold text-[#f5c84a]">₹{selected.grandTotal || selected.total}</span></div>
+                  {!isPaid(selected) && <div className="p-2.5 rounded-xl bg-[#261818] border border-error/40 text-error text-xs">PhonePe has not confirmed this payment. Do not prepare the food until it shows PAID — use "Re-check payment" on the order.</div>}
+                  {selected.coupon && <div className="row"><span>Coupon</span><span>{selected.coupon} ({selected.discountPct}% off)</span></div>}
+                  {selected.distanceKm!=null && <div className="row"><span>Distance</span><span>{selected.distanceKm} km</span></div>}
                   {selected.prepTime && <div className="row"><span>Kitchen Prep Time</span><span className="text-blue-300 font-semibold">{selected.prepTime}</span></div>}
                   {selected.cancelReason && <div className="row"><span>Cancel Reason</span><span className="text-error">{selected.cancelReason}</span></div>}
 
@@ -2423,8 +2629,8 @@ export default function Admin(){
                       {selected.customer?.geo && (
                         <a className="text-xs px-2.5 py-1 rounded bg-[#222] hover:bg-[#333] text-[#f5c84a]" href={`https://maps.google.com/?q=${selected.customer.geo.lat},${selected.customer.geo.lng}`} target="_blank" rel="noopener noreferrer">Open Coordinates in Maps</a>
                       )}
-                      {selected.customer?.manualLink && (
-                        <a className="text-xs px-2.5 py-1 rounded bg-[#222] hover:bg-[#333] text-[#f5c84a]" href={selected.customer.manualLink} target="_blank" rel="noopener noreferrer">Open User Link</a>
+                      {safeHref(selected.customer?.manualLink) && (
+                        <a className="text-xs px-2.5 py-1 rounded bg-[#222] hover:bg-[#333] text-[#f5c84a]" href={safeHref(selected.customer.manualLink)} target="_blank" rel="noopener noreferrer">Open User Link</a>
                       )}
                     </div>
                   </div>
@@ -2441,8 +2647,8 @@ export default function Admin(){
                     <ul className="text-sm divide-y divide-[#222] bg-[#121212] rounded-xl border border-[#222] overflow-hidden">
                       {(selected.items||[]).map((it,i)=> (
                         <li key={i} className="p-2.5 flex items-center justify-between">
-                          <span>{it.item?.name || 'Item'} × <strong className="text-white">{it.qty}</strong></span>
-                          <span className="font-mono text-muted">₹{Number(it.item?.price||0) * it.qty}</span>
+                          <span>{itemName(it)} × <strong className="text-white">{it.qty}</strong></span>
+                          <span className="font-mono text-muted">₹{itemPrice(it) * Number(it.qty||0)}</span>
                         </li>
                       ))}
                     </ul>
@@ -2486,8 +2692,8 @@ export default function Admin(){
 
                   <div className="flex flex-wrap gap-2 pt-2 border-t border-[#222]">
                     <a className="btn text-xs" href={`tel:${selected.customer?.phone}`}>Call Customer</a>
-                    <a className="btn text-xs" target="_blank" rel="noopener noreferrer" href={`https://wa.me/${storePhone||OWNER_PHONE}?text=${encodeURIComponent(`🟢 New Order #${selected.id}\nTotal: ₹${selected.total}\nCustomer: ${selected.customer?.name} (${selected.customer?.phone})\nAddress: ${selected.customer?.address}\nItems: ${(selected.items||[]).map(it=>`${it.item?.name}×${it.qty}`).join(', ')}`)}`}>Forward to Kitchen (WhatsApp)</a>
-                    <button className="btn text-xs" onClick={()=>refundOrder(selected.id, selected.total)}>Refund Order</button>
+                    <a className="btn text-xs" target="_blank" rel="noopener noreferrer" href={`https://wa.me/${storePhone||OWNER_PHONE}?text=${encodeURIComponent(`🟢 New Order #${selected.id}\nTotal: ₹${selected.total}\nCustomer: ${selected.customer?.name} (${selected.customer?.phone})\nAddress: ${selected.customer?.address}\nItems: ${(selected.items||[]).map(it=>`${itemName(it)}×${it.qty}`).join(', ')}`)}`}>Forward to Kitchen (WhatsApp)</a>
+                    {isPaid(selected) && <button className="btn text-xs" onClick={()=>refundOrder(selected.id, selected.total)}>Refund Order</button>}
                   </div>
                 </div>
               </div>
